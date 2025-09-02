@@ -64,7 +64,16 @@ def run_simulation(config, GameKelly):
                 })
     return results
 
-def display_results_streamlit(results,  config, save_path=None):
+def display_results_streamlit(results, config, save_path=None):
+    import os
+    import csv
+    import streamlit as st
+    from collections import defaultdict
+
+    # --- Crée le dossier si nécessaire ---
+    if save_path:
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+
     lrMethods = config["lrMethods"]
 
     # Organize results
@@ -103,4 +112,5 @@ def display_results_streamlit(results,  config, save_path=None):
             for row in rows:
                 writer.writerow(row)
         st.success(f"✅ Table saved to {save_path}")
+
 
