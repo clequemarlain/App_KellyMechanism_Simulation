@@ -232,13 +232,11 @@ if run:
         # Display last saved figure
         import matplotlib.image as mpimg
 
-        pages = convert_from_path("plot_utility.pdf")
-        pages[0].save("plot_utility.png", "PNG")
-        #img = mpimg.imread(f"{figpath}")
-        img = mpimg.imread("plot_utility.png")
+        pages = convert_from_path(figpath, dpi=150)
+        img = pages[0]  # première page du PDF
 
+        # Affiche dans Streamlit
         st.image(img, caption=f"Saved: {figpath}")
-
     with col2:
         st.subheader("Outputs")
         st.write("Last utilities (per method):")
