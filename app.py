@@ -1,6 +1,6 @@
 import json
 import numpy as np
-import torch
+import torch,io
 import streamlit as st
 from pdf2image import convert_from_path
 import matplotlib.pyplot as plt
@@ -19,9 +19,36 @@ with col1:
 with col2:
     st.image("src/game/cognetslogo1.png", use_container_width=True)  # Your project logo
 
-st.set_page_config(page_title="Edge Pricing & Bidding – Kelly Games", layout="wide")
+st.set_page_config(page_title="Bidding – Kelly Games", layout="wide")
 
-st.title("🎮 Edge Pricing & Bidding Simulator (α-fair Kelly Mechanism)")
+st.title("🎮 Bidding Simulator (α-fair Kelly Mechanism)")
+
+from PIL import Image
+
+# Convert PDF pages to images (assume 1 page each)
+images1 = convert_from_path('src/game/kellyMechanism-Journal-Page-1.drawio.pdf', dpi=100)
+images2 = convert_from_path('src/game/kellyMechanism-Journal-Page-2.drawio.pdf', dpi=100)
+images3 = convert_from_path('src/game/kellyMechanism-Journal-Page-3.drawio.pdf', dpi=100)
+images4 = convert_from_path('src/game/kellyMechanism-Journal-Page-4.drawio.pdf', dpi=100)
+
+# Collect single-page images
+img_list = [images1[0], images2[0], images3[0], images4[0]]
+
+# Create a GIF in memory
+gif_bytes = io.BytesIO()
+img_list[0].save(
+    gif_bytes,
+    format='GIF',
+    save_all=True,
+    append_images=img_list[1:],  # the rest of the images
+    duration=3*1000,  # 1000ms per frame
+    loop=0
+)
+gif_bytes.seek(0)
+
+# Streamlit button to play GIF
+#if st.button("Play GIF"):
+st.image(gif_bytes, use_container_width=True)
 
 with st.sidebar:
     st.header("Configuration")
@@ -86,12 +113,35 @@ with st.sidebar:
         "γ (a_i heterogeneity)", min_value=0.0, max_value=4.0, value=float(cfg["gamma"]), step=0.1,
         help="Heterogeneity of utility scaling among players."
     )
+    # Liste de toutes les méthodes
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAH", "XL", "Hybrid"]
 
-    lr_methods_all = ["None", "DAQ", "OGD", "SBRD", "NumSBRD", "DAH", "XL"]
-    cfg["lrMethods"] = st.multiselect(
-        "Learning Methods", lr_methods_all, default=cfg["lrMethods"],
-        help="Select which learning algorithms to run. Choose 'None' if you do not want any."
+    # Méthodes normales à sélectionner
+    selected_methods = st.multiselect(
+        "Select learning methods",
+        lr_methods_all,
+        default=["DAQ", "SBRD"]
     )
+
+    cfg["lrMethods"] = []
+
+    # Si Hybrid est sélectionné, demander les méthodes à combiner
+    if "Hybrid" in selected_methods:
+        st.info("Hybrid selected: choose 2 methods to combine for Hybrid")
+        hybrid_options = [m for m in lr_methods_all if m != "Hybrid"]
+        hybrid_methods = st.multiselect(
+            "Select at most 2 methods for Hybrid",
+            hybrid_options,
+            #default=hybrid_options[:2]
+        )
+        #if len(hybrid_methods)%cfg["n"] != 0:
+        #    st.warning("Hybrid can only combine k methods such that k * Nbre_of_Hybrid_methods = n .")
+         #   hybrid_methods = hybrid_methods[:2]
+        cfg["Hybrid_funcs"] = hybrid_methods
+        #cfg["lrMethods"] = [m for m in selected_methods if m != "Hybrid"] + [("Hybrid", hybrid_methods)]
+
+    cfg["lrMethods"] = selected_methods
+
 
     cfg["x_label"] = st.text_input(
         "x_label",
@@ -124,7 +174,7 @@ with st.sidebar:
     # Range of number of players
     cfg["list_n"] = st.text_area(
         "List of players (list_n)",
-        value=", ".join(str(x) for x in cfg.get("list_n", [2, 3, 5, 20])),
+        value=", ".join(str(x) for x in cfg.get("list_n", DEFAULT_CONFIG_TABLE["list_n"])),
         help="Comma-separated list of numbers of players to simulate."
     )
     # Convert input string to list of integers
@@ -136,7 +186,7 @@ with st.sidebar:
     # Range of gamma (heterogeneity)
     cfg["list_gamma"] = st.text_area(
         "List of γ values (list_gamma)",
-        value=", ".join(str(x) for x in cfg.get("list_gamma", [0.0, 0.5, 1.0])),
+        value=", ".join(str(x) for x in cfg.get("list_gamma", DEFAULT_CONFIG_TABLE["list_gamma"])),
         help="Comma-separated list of γ (a_i heterogeneity) values."
     )
     # Convert input string to list of floats
@@ -152,20 +202,12 @@ st.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2)
 run = st.button("Run simulation")
 
 selected_algo = st.selectbox("Choose algorithm to  describe", list(ALGO_DESCRIPTIONS.keys()))
-#help_button = st.button("❓ Help")
 
 if selected_algo != "None":
-    #desc = ALGO_DESCRIPTIONS[selected_algo]
-    #st.markdown(f"**{selected_algo}**\n\n{desc.replace('Pseudo-code:', '```python\nPseudo-code:').replace('project onto feasible set','project onto feasible set\n```')}")
     with st.expander(f"Description of {selected_algo}", expanded=True):
         # Affichage direct du texte Python + commentaires
         st.code(ALGO_DESCRIPTIONS[selected_algo], language='python')
 
-#if help_button and selected_algo != "None":
-#    st.info(ALGO_DESCRIPTIONS[selected_algo])
-
-#algo = st.selectbox("Choose algorithm", list(ALGO_DESCRIPTIONS.keys()))
-#st.write(f"**Description:** {ALGO_DESCRIPTIONS[algo]}")
 
 col1, col2 = st.columns([1,1])
 
@@ -193,7 +235,7 @@ if run:
     y_data_avg_bid, y_data_utility, y_data_sw = [], [], []
 
     set1 = torch.arange(n, dtype=torch.long)
-    nb_hybrid = max(1, len(["DAQ","DAH"]))
+    nb_hybrid = max(1, len(cfg["Hybrid_funcs"]))
     Hybrid_sets = torch.chunk(set1, nb_hybrid)
 
     with st.spinner("Simulating..."):
@@ -201,7 +243,7 @@ if run:
             game_set = GameKelly(n, price, epsilon, delta, alpha, tol)
             Bids, Utilities, error_NE_set = game_set.learning(
                 lrMethod, a_vector, c_vector, d_vector, T, eta, bid0, vary=lr_vary,
-                Hybrid_funcs=["DAQ","DAH"], Hybrid_sets=Hybrid_sets
+                Hybrid_funcs=cfg["Hybrid_funcs"], Hybrid_sets=Hybrid_sets
             )
 
             SocialWelfare = torch.sum(Utilities, dim=1)

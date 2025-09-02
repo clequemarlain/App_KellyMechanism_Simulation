@@ -260,9 +260,9 @@ def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale
         if linestyle == "":
             mask = y_data[i] > 0
             x_vals = [x_data[i]] * y_data[i][mask].shape[0]
-            plt.plot(x_vals[::step], (y_data[i][mask])[::step], linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, label=f"{legends[i]}")
+            plt.plot(x_vals[::step], (y_data[i][mask])[::step], color=colors[i], linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, label=f"{legends[i]}")
         else:
-            plt.plot(x_data[::step], (y_data[i])[::step], linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, label=f"{legends[i]}")
+            plt.plot(x_data[::step], (y_data[i])[::step], color=colors[i], linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, label=f"{legends[i]}")
         if pltText:
             last_y = y_data[i][-1]
             plt.text(len(y_data[i]) - 1, last_y, f"{last_y:.2e}", bbox=dict(facecolor='white', alpha=0.7))
@@ -293,7 +293,7 @@ def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog
     for i in range(len(legends)):
         n = len((y_data[i, 0]))
         for j in range(n):
-            plt.plot(x_data[::step], (y_data[i])[:, j][::step], linestyle=linestyles[i % len(linestyles)], linewidth=linewidth, marker=markers[j], markersize=markersize)
+            plt.plot(x_data[::step], (y_data[i])[:, j][::step], color=colors[i], linestyle=linestyles[i % len(linestyles)], linewidth=linewidth, marker=markers[j], markersize=markersize)
     plt.legend(legend_handles, legends, frameon=True, facecolor="white", edgecolor="black",
                prop={"weight": "bold"})
 

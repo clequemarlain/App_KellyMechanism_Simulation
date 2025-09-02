@@ -66,7 +66,6 @@ def run_simulation(config, GameKelly):
 
 import io
 import csv
-import streamlit as st
 from collections import defaultdict
 
 def display_results_streamlit(results, config,save_path):
