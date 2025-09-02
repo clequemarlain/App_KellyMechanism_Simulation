@@ -64,16 +64,12 @@ def run_simulation(config, GameKelly):
                 })
     return results
 
-def display_results_streamlit(results, config, save_path=None):
-    import os
-    import csv
-    import streamlit as st
-    from collections import defaultdict
+import io
+import csv
+import streamlit as st
+from collections import defaultdict
 
-    # --- Crée le dossier si nécessaire ---
-    if save_path:
-        os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
+def display_results_streamlit(results, config):
     lrMethods = config["lrMethods"]
 
     # Organize results
@@ -104,13 +100,22 @@ def display_results_streamlit(results, config, save_path=None):
     st.write("### Comparison of Convergence Time")
     st.table([headers] + rows)
 
-    # Save CSV if path is provided
-    if save_path:
-        with open(save_path, mode="w", newline='', encoding="utf-8") as file:
-            writer = csv.writer(file, delimiter=";")
-            writer.writerow(headers)
-            for row in rows:
-                writer.writerow(row)
-        st.success(f"✅ Table saved to {save_path}")
+    # Prepare CSV in memory for download
+    csv_buffer = io.StringIO()
+    writer = csv.writer(csv_buffer, delimiter=";")
+    writer.writerow(headers)
+    for row in rows:
+        writer.writerow(row)
+    csv_data = csv_buffer.getvalue()
+    csv_buffer.close()
+
+    # Streamlit download button
+    st.download_button(
+        label="⬇️ Download Table as CSV",
+        data=csv_data,
+        file_name="table_results.csv",
+        mime="text/csv"
+    )
+
 
 
