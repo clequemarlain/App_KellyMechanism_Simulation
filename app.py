@@ -208,6 +208,26 @@ if selected_algo != "None":
         # Affichage direct du texte Python + commentaires
         st.code(ALGO_DESCRIPTIONS[selected_algo], language='python')
 
+if st.checkbox("Show Formulations"):
+    st.latex(r"""
+    \varphi_i^{\alpha}(x_i) =
+    \begin{cases}
+    a_i\frac{x_i^{1-\alpha}}{1-\alpha} - \lambda z_i, & \alpha \neq 1 \\
+    a_i\log(x_i) - \lambda z_i, & \alpha = 1
+    \end{cases}
+    \quad , \quad
+    a_i = \frac{a}{(i+1)^\gamma}
+    \quad, \quad x_i =\frac{z_i}{\sum_{j=1}^n z_j + \delta}
+    """)
+
+    st.markdown(r"""
+    **Where:**  
+    - \($x_i$\) = allocated resource share for player $i$  
+    - \($\alpha \ge 0$\) is the fairness parameter  
+    - \($a$\) is the base utility scale  
+    - \($\gamma \ge 0$\) controls heterogeneity across players
+    - \($\lambda$\) the price
+    """)
 
 col1, col2 = st.columns([1,1])
 
