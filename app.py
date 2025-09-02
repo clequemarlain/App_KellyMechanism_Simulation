@@ -2,10 +2,12 @@ import json
 import numpy as np
 import torch
 import streamlit as st
+from pdf2image import convert_from_path
 import matplotlib.pyplot as plt
-
+from src.game import *
 from src.game.utils import GameKelly, Utility, plotGame, plotGame_dim_N
 from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
+from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
 
 # Add logos side by side at the top
@@ -91,6 +93,18 @@ with st.sidebar:
         help="Select which learning algorithms to run. Choose 'None' if you do not want any."
     )
 
+    cfg["x_label"] = st.text_input(
+        "x_label",
+        value=cfg.get("x_label", "X Axis"),
+        help="Label X axis."
+    )
+
+    cfg["y_label"] = st.text_input(
+        "y_label",
+        value=cfg.get("y_label", "Y Axis"),
+        help="Label Y axis."
+    )
+
     cfg["ylog_scale"] = st.checkbox(
         "Y log scale", value=cfg["ylog_scale"],
         help="Use logarithmic scale on Y-axis for plotting (good for wide-range data)."
@@ -107,7 +121,33 @@ with st.sidebar:
         help="Number of points to skip when plotting (reduce for faster plotting)."
     )
 
-    st.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2), file_name="config.json", mime="application/json")
+    # Range of number of players
+    cfg["list_n"] = st.text_area(
+        "List of players (list_n)",
+        value=", ".join(str(x) for x in cfg.get("list_n", [2, 3, 5, 20])),
+        help="Comma-separated list of numbers of players to simulate."
+    )
+    # Convert input string to list of integers
+    try:
+        cfg["list_n"] = [int(x.strip()) for x in cfg["list_n"].split(",") if x.strip()]
+    except:
+        st.error("Invalid format for list_n, please enter integers separated by commas.")
+
+    # Range of gamma (heterogeneity)
+    cfg["list_gamma"] = st.text_area(
+        "List of γ values (list_gamma)",
+        value=", ".join(str(x) for x in cfg.get("list_gamma", [0.0, 0.5, 1.0])),
+        help="Comma-separated list of γ (a_i heterogeneity) values."
+    )
+    # Convert input string to list of floats
+    try:
+        cfg["list_gamma"] = [float(x.strip()) for x in cfg["list_gamma"].split(",") if x.strip()]
+    except:
+        st.error("Invalid format for list_gamma, please enter numbers separated by commas.")
+
+
+
+st.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2), file_name="config.json", mime="application/json")
 
 run = st.button("Run simulation")
 
@@ -134,8 +174,8 @@ if run:
     a = float(cfg["a"]); mu = float(cfg["mu"]); c = float(cfg["c"]); delta = float(cfg["delta"])
     epsilon = torch.tensor(float(cfg["epsilon"]), dtype=torch.float64)
     lr_vary = False
-    x_label = "t"
-    y_label = r"$\varphi(z)$"
+    x_label = cfg["x_label"]
+    y_label = cfg["y_label"] #r"$\varphi(z)$"
     ylog_scale = bool(cfg["ylog_scale"])
     plot_step = int(cfg["plot_step"])
     lrMethods = list(cfg["lrMethods"])
@@ -191,7 +231,12 @@ if run:
 
         # Display last saved figure
         import matplotlib.image as mpimg
-        img = mpimg.imread(f"{figpath}")
+
+        pages = convert_from_path("plot_utility.pdf")
+        pages[0].save("plot_utility.png", "PNG")
+        #img = mpimg.imread(f"{figpath}")
+        img = mpimg.imread("plot_utility.png")
+
         st.image(img, caption=f"Saved: {figpath}")
 
     with col2:
@@ -201,7 +246,15 @@ if run:
             st.write(f"- {m}: shape {np.array(y_data_utility[i]).shape}")
 
         with open(figpath, "rb") as f:
-            st.download_button("⬇️ Download PNG", data=f.read(), file_name=figpath, mime="application/png")
+            st.download_button("⬇️ Download PDF", data=f.read(), file_name=figpath, mime="application/pdf")
+
+
+from src.game.simulation_table import run_simulation,  display_results_streamlit
+
+
+if st.button("Run Simulation Table"):
+    results = run_simulation(cfg, GameKelly)
+    display_results_streamlit(results,  cfg, save_path="results/table_results.csv")
 
 st.markdown("---")
 st.caption("Tip: Deploy on **Streamlit Cloud** or **Hugging Face Spaces** (Python + Streamlit).")

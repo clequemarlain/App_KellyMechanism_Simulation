@@ -268,8 +268,8 @@ def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale
     plt.grid(True)
     plt.legend()
     plt.tight_layout()
-    plt.savefig(f"{saveFileName}.png", format="png")
-    return f"{saveFileName}.png"
+    plt.savefig(f"{saveFileName}.pdf", format="pdf")
+    return f"{saveFileName}.pdf"
 
 def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale, fontsize=16, markersize=6, linewidth=2, linestyle="-", pltText=False, step=1):
     plt.figure()
@@ -285,5 +285,5 @@ def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog
     plt.xlabel(x_label)
     plt.grid(True)
     plt.tight_layout()
-    plt.savefig(f"{saveFileName}.png", format="png")
-    return f"{saveFileName}.png"
+    plt.savefig(f"{saveFileName}.pdf", format="pdf")
+    return f"{saveFileName}.pdf"
