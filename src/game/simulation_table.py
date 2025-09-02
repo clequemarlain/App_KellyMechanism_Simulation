@@ -64,40 +64,43 @@ def run_simulation(config, GameKelly):
                 })
     return results
 
-import pandas as pd
+def display_results_streamlit(results,  config, save_path=None):
+    lrMethods = config["lrMethods"]
 
-def display_results_streamlit(results, cfg, save_path="results/table_results.csv"):
-    st.subheader("Simulation Results")
+    # Organize results
+    table_data = defaultdict(lambda: defaultdict(dict))
+    for row in results:
+        gamma = row["gamma"]
+        n = row["n"]
+        method = row["method"]
+        iters = row["iterations"]
+        table_data[gamma][n][method] = iters
 
-    # Ensure results is a DataFrame
-    if isinstance(results, pd.DataFrame):
-        df = results
-    elif isinstance(results, dict):
-        df = pd.DataFrame([results])
-    elif isinstance(results, list):
-        try:
-            df = pd.DataFrame(results)
-        except Exception as e:
-            st.error(f"Cannot convert results list to DataFrame: {e}")
-            return
-    else:
-        st.error(f"Unsupported results type: {type(results)}")
-        return
+    # Build rows
+    rows = []
+    headers = ["gamma", "n"] + lrMethods
 
-    # Save results safely
-    try:
-        df.to_csv(save_path, index=False)
-        st.success(f"Results saved to {save_path}")
-    except Exception as e:
-        st.warning(f"Could not save results: {e}")
+    def fmt(val):
+        return "∞" if val == float("inf") else str(val)
 
-    # Show table in Streamlit
-    st.dataframe(df)
+    for gamma in sorted(table_data.keys()):
+        for n in sorted(table_data[gamma].keys()):
+            row = [gamma, n]
+            for lrMethod in lrMethods:
+                time = table_data[gamma][n].get(lrMethod, "---")
+                row.append(fmt(time))
+            rows.append(row)
 
-    # Show cfg info
-    st.subheader("Configuration")
-    if isinstance(cfg, dict):
-        st.json(cfg)
-    else:
-        st.write(cfg)
+    # Streamlit display
+    st.write("### Comparison of Convergence Time")
+    st.table([headers] + rows)
+
+    # Save CSV if path is provided
+    if save_path:
+        with open(save_path, mode="w", newline='', encoding="utf-8") as file:
+            writer = csv.writer(file, delimiter=";")
+            writer.writerow(headers)
+            for row in rows:
+                writer.writerow(row)
+        st.success(f"✅ Table saved to {save_path}")
 
