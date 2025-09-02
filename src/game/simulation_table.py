@@ -66,47 +66,13 @@ def run_simulation(config, GameKelly):
 
 import pandas as pd
 
-def display_results_streamlit(results, config, save_path=None):
-    lrMethods = config["lrMethods"]
+def display_results_streamlit(results, cfg):
+    df = pd.DataFrame(results)
+    csv = df.to_csv(sep=";", index=False).encode("utf-8")
 
-    # Organize results
-    table_data = defaultdict(lambda: defaultdict(dict))
-    for row in results:
-        gamma = row["gamma"]
-        n = row["n"]
-        method = row["method"]
-        iters = row["iterations"]
-        table_data[gamma][n][method] = iters
-
-    # Build rows
-    rows = []
-    headers = ["gamma", "n"] + lrMethods
-
-    def fmt(val):
-        return "∞" if val == float("inf") else str(val)
-
-    for gamma in sorted(table_data.keys()):
-        for n in sorted(table_data[gamma].keys()):
-            row = [gamma, n]
-            for lrMethod in lrMethods:
-                time = table_data[gamma][n].get(lrMethod, "---")
-                row.append(fmt(time))
-            rows.append(row)
-
-    # Convert to DataFrame
-    df = pd.DataFrame(rows, columns=headers)
-
-    # Streamlit display
-    st.write("### 📊 Comparison of Convergence Time")
-    st.dataframe(df, use_container_width=True)
-
-    # Save CSV if path is provided
-    if save_path:
-        df.to_csv(save_path, sep=";", index=False, encoding="utf-8")
-        st.success(f"✅ Table saved to {save_path}")
-        st.download_button(
-            "⬇️ Download CSV",
-            data=df.to_csv(sep=";", index=False).encode("utf-8"),
-            file_name="results_table.csv",
-            mime="text/csv"
-        )
+    st.download_button(
+        label="📥 Download results as CSV",
+        data=csv,
+        file_name="table_results.csv",
+        mime="text/csv"
+    )
