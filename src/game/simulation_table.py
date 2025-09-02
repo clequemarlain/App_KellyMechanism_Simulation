@@ -66,13 +66,38 @@ def run_simulation(config, GameKelly):
 
 import pandas as pd
 
-def display_results_streamlit(results, cfg):
-    df = pd.DataFrame(results)
-    csv = df.to_csv(sep=";", index=False).encode("utf-8")
+def display_results_streamlit(results, cfg, save_path="results/table_results.csv"):
+    st.subheader("Simulation Results")
 
-    st.download_button(
-        label="📥 Download results as CSV",
-        data=csv,
-        file_name="table_results.csv",
-        mime="text/csv"
-    )
+    # Ensure results is a DataFrame
+    if isinstance(results, pd.DataFrame):
+        df = results
+    elif isinstance(results, dict):
+        df = pd.DataFrame([results])
+    elif isinstance(results, list):
+        try:
+            df = pd.DataFrame(results)
+        except Exception as e:
+            st.error(f"Cannot convert results list to DataFrame: {e}")
+            return
+    else:
+        st.error(f"Unsupported results type: {type(results)}")
+        return
+
+    # Save results safely
+    try:
+        df.to_csv(save_path, index=False)
+        st.success(f"Results saved to {save_path}")
+    except Exception as e:
+        st.warning(f"Could not save results: {e}")
+
+    # Show table in Streamlit
+    st.dataframe(df)
+
+    # Show cfg info
+    st.subheader("Configuration")
+    if isinstance(cfg, dict):
+        st.json(cfg)
+    else:
+        st.write(cfg)
+
