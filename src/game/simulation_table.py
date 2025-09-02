@@ -64,7 +64,9 @@ def run_simulation(config, GameKelly):
                 })
     return results
 
-def display_results_streamlit(results,  config, save_path=None):
+import pandas as pd
+
+def display_results_streamlit(results, config, save_path=None):
     lrMethods = config["lrMethods"]
 
     # Organize results
@@ -91,15 +93,20 @@ def display_results_streamlit(results,  config, save_path=None):
                 row.append(fmt(time))
             rows.append(row)
 
+    # Convert to DataFrame
+    df = pd.DataFrame(rows, columns=headers)
+
     # Streamlit display
-    st.write("### Comparison of Convergence Time")
-    st.table([headers] + rows)
+    st.write("### 📊 Comparison of Convergence Time")
+    st.dataframe(df, use_container_width=True)
 
     # Save CSV if path is provided
     if save_path:
-        with open(save_path, mode="w", newline='', encoding="utf-8") as file:
-            writer = csv.writer(file, delimiter=";")
-            writer.writerow(headers)
-            for row in rows:
-                writer.writerow(row)
+        df.to_csv(save_path, sep=";", index=False, encoding="utf-8")
         st.success(f"✅ Table saved to {save_path}")
+        st.download_button(
+            "⬇️ Download CSV",
+            data=df.to_csv(sep=";", index=False).encode("utf-8"),
+            file_name="results_table.csv",
+            mime="text/csv"
+        )
