@@ -26,31 +26,28 @@ st.title("🎮 Bidding Simulator (α-fair Kelly Mechanism)")
 from PIL import Image
 
 # Convert PDF pages to images (assume 1 page each)
+images1 = convert_from_path('src/game/kellyMechanism-Journal-Page-1.drawio.pdf', dpi=100)
+images2 = convert_from_path('src/game/kellyMechanism-Journal-Page-2.drawio.pdf', dpi=100)
+images3 = convert_from_path('src/game/kellyMechanism-Journal-Page-3.drawio.pdf', dpi=100)
+images4 = convert_from_path('src/game/kellyMechanism-Journal-Page-4.drawio.pdf', dpi=100)
 
-# List of PNG files
-png_paths = [
-    "src/game/kellyMechanism-Journal-Page-1.drawio.png",
-    "src/game/kellyMechanism-Journal-Page-2.drawio.png",
-    "src/game/kellyMechanism-Journal-Page-3.drawio.png",
-    "src/game/kellyMechanism-Journal-Page-4.drawio.png",
-]
-
-# Load all PNG images
-img_list = [Image.open(p) for p in png_paths]
+# Collect single-page images
+img_list = [images1[0], images2[0], images3[0], images4[0]]
 
 # Create a GIF in memory
 gif_bytes = io.BytesIO()
 img_list[0].save(
     gif_bytes,
-    format="GIF",
+    format='GIF',
     save_all=True,
-    append_images=img_list[1:],
-    duration=3*1000,  # 3 seconds per frame
-    loop=0,
+    append_images=img_list[1:],  # the rest of the images
+    duration=3*1000,  # 1000ms per frame
+    loop=0
 )
 gif_bytes.seek(0)
 
-# Display GIF in Streamlit
+# Streamlit button to play GIF
+#if st.button("Play GIF"):
 st.image(gif_bytes, use_container_width=True)
 
 with st.sidebar:
