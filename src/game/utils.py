@@ -252,6 +252,10 @@ def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale
     y_data = np.array(y_data, dtype=object)
     if ylog_scale:
         plt.yscale("log")
+    legend_handles = [
+        Line2D([0], [0], color=colors[i], linestyle=linestyle, linewidth=linewidth)
+        for i in range(len(legends))
+    ]
     for i in range(len(legends)):
         if linestyle == "":
             mask = y_data[i] > 0
@@ -262,11 +266,15 @@ def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale
         if pltText:
             last_y = y_data[i][-1]
             plt.text(len(y_data[i]) - 1, last_y, f"{last_y:.2e}", bbox=dict(facecolor='white', alpha=0.7))
-        plt.legend(frameon=True, facecolor="white", edgecolor="black", prop={"weight": "bold"})
-    plt.ylabel(y_label)
-    plt.xlabel(x_label)
+        plt.legend(legend_handles, legends, frameon=True, facecolor="white", edgecolor="black",
+                   prop={"weight": "bold"})
+
+    for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
+        label.set_fontweight("bold")  # ✅ Graduation des axes en gras
+
+    plt.ylabel(f"{y_label}", fontweight="bold")
+    plt.xlabel(f"{x_label}", fontweight="bold")
     plt.grid(True)
-    plt.legend()
     plt.tight_layout()
     plt.savefig(f"{saveFileName}.pdf", format="pdf")
     return f"{saveFileName}.pdf"
@@ -277,12 +285,23 @@ def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog
     linestyles = ["-", "--", ":", "-."]
     if ylog_scale:
         plt.yscale("log")
+        # --- Custom legend: linestyle + color only (no marker) ---
+    legend_handles = [
+        Line2D([0], [0], color=colors[i], linestyle=linestyles[i], linewidth=linewidth)
+        for i in range(len(legends))
+    ]
     for i in range(len(legends)):
         n = len((y_data[i, 0]))
         for j in range(n):
             plt.plot(x_data[::step], (y_data[i])[:, j][::step], linestyle=linestyles[i % len(linestyles)], linewidth=linewidth, marker=markers[j], markersize=markersize)
-    plt.ylabel(y_label)
-    plt.xlabel(x_label)
+    plt.legend(legend_handles, legends, frameon=True, facecolor="white", edgecolor="black",
+               prop={"weight": "bold"})
+
+    for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
+        label.set_fontweight("bold")  # ✅ Graduation des axes en gras
+
+    plt.ylabel(f"{y_label}", fontweight="bold")
+    plt.xlabel(f"{x_label}", fontweight="bold")
     plt.grid(True)
     plt.tight_layout()
     plt.savefig(f"{saveFileName}.pdf", format="pdf")
