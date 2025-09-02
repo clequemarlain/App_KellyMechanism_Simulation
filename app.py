@@ -27,18 +27,16 @@ from PIL import Image
 
 # Convert PDF pages to images (assume 1 page each)
 
-def pdf_to_images(path, dpi=100):
-    return convert_from_path(path, dpi=dpi)
-
-# Collect all pages in a loop
-pdf_paths = [
-    "src/game/kellyMechanism-Journal-Page-1.drawio.pdf",
-    "src/game/kellyMechanism-Journal-Page-2.drawio.pdf",
-    "src/game/kellyMechanism-Journal-Page-3.drawio.pdf",
-    "src/game/kellyMechanism-Journal-Page-4.drawio.pdf",
+# List of PNG files
+png_paths = [
+    "src/game/kellyMechanism-Journal-Page-1.drawio.png",
+    "src/game/kellyMechanism-Journal-Page-2.drawio.png",
+    "src/game/kellyMechanism-Journal-Page-3.drawio.png",
+    "src/game/kellyMechanism-Journal-Page-4.drawio.png",
 ]
 
-img_list = [pdf_to_images(p)[0] for p in pdf_paths]
+# Load all PNG images
+img_list = [Image.open(p) for p in png_paths]
 
 # Create a GIF in memory
 gif_bytes = io.BytesIO()
@@ -47,13 +45,12 @@ img_list[0].save(
     format="GIF",
     save_all=True,
     append_images=img_list[1:],
-    duration=3000,  # 3 seconds per frame
+    duration=3*1000,  # 3 seconds per frame
     loop=0,
 )
 gif_bytes.seek(0)
 
-# Streamlit button to play GIF
-#if st.button("Play GIF"):
+# Display GIF in Streamlit
 st.image(gif_bytes, use_container_width=True)
 
 with st.sidebar:
