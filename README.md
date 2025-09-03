@@ -1,5 +1,7 @@
 # Edge Pricing & Bidding – α-fair Kelly Simulator
 
+👉 **[Streamlit Cloud](https://app-kellymechanism-simulation.streamlit.app/)**  
+
 A small, sharable environment to simulate α-fair Kelly games with several learning dynamics (DAQ, OGD, SBRD, NumSBRD, XL, DAH).
 
 ## Structure
