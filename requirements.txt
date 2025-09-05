@@ -2,5 +2,6 @@ torch
 numpy
 scipy
 matplotlib
+plotly
 streamlit
 pdf2image
