@@ -135,7 +135,7 @@ with st.sidebar:
         # Define subsets of players
         hybrid_sets_str = st.text_area(
             "Hybrid sets (JSON list of lists)",
-            value=str([list(range(0, 1)), list(range(1, int(cfg["n"])))]),
+            value=[list(range(0, 1)), list(range(1, int(cfg["n"])))],
             help="Define subsets of players for Hybrid learning, e.g. [[0,1],[2,3]]"
         )
         try:
