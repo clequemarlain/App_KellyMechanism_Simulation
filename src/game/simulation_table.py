@@ -34,8 +34,14 @@ def run_simulation(config, GameKelly):
             set1 = torch.arange(n, dtype=torch.long)
             nb_hybrid = len(Hybrid_funcs)
             Hybrid_sets = torch.chunk(set1, nb_hybrid)
-            a_vector = torch.tensor([a / (i + 1) ** gamma for i in range(n)], dtype=torch.float64)
-            c_vector = torch.tensor([c / (i + 1) ** mu for i in range(n)], dtype=torch.float64)
+            a_min = 1
+            c_min = epsilon
+            d_min = 0
+
+            a_vector = torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
+            c_vector = torch.tensor([max(c - i * mu, c_min) for i in range(n)], dtype=torch.float64)
+            # dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
+            d_vector = 0.7 * d_min
 
             for lrMethod in lrMethods:
                 print(f"[{run_counter}/{total_runs}] gamma={gamma}, n={n}, method={lrMethod}")
@@ -46,15 +52,13 @@ def run_simulation(config, GameKelly):
                 d_vector = torch.zeros(n)
 
                 game = GameKelly(n, price, eps, delta, alpha, tol)
-                bids, lsw, error = game.learning(
-                    lrMethod, a_vector, c_vector, d_vector,
-                    T, eta, bid0, vary=False,
-                    Hybrid_funcs=Hybrid_funcs,
-                    Hybrid_sets=Hybrid_sets
+                Bids, Welfare, Utility_set, error_NE_set = game.learning(
+                    lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
+                    vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
                 )
 
-                min_error = torch.min(error)
-                nb_iter = int(torch.argmin(error).item()) if min_error <= tol else float('inf')
+                min_error = torch.min(error_NE_set)
+                nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
 
                 results.append({
                     "gamma": gamma,

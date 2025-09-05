@@ -1,27 +1,31 @@
 SIMULATION_CONFIG = {
     "lrMethods": ["DAQ","OGD","SBRD"],
     "Hybrid_funcs": ["DAQ", "DAH"],
-    "T": 100,
-    "alpha": 1,
-    "n": 3,
-    "eta": 0.5,
-    "price": 1.0,
-    "a": 100,
-    "mu": 0,
-    "c": 4000,
-    "delta": 0.1,
-    "epsilon": 1e-3,
-    "tol": 1e-5,
-    "lr_vary": False,
-    "IdxConfig": 1,
-    "x_label": "Time step (t)",
-    "metric": "utility",
-    "y_label": r"$\varphi (z)$",
+    "T": 2000,  # Number of iterations in the learning process
+    "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
+    "n": 20,  # Number of players in the game
+    "eta": 0.5,  # Step size for the learning update
+    "price": 1.0,  # Price parameter in the game (can represent a resource price)
+    "a": 1000,  # Parameter for the utility function heterogeneity (a_i)
+    "a_min": 1,
+    "mu": 0,  # Exponent controlling the heterogeneity of the c_vector
+    "c": 4000,  # Constant part of the c_vector
+    "delta": 0.1,  # Delta parameter (could model uncertainty, slack, or safety margin)
+    "epsilon": 1,  # Regularization term (to avoid division by zero, for stability)
+    "init_bid": 1,
+    "tol": 1e-5,  # Tolerance threshold for considering the game as converged
+    "lr_vary": False,  # Learning rate vary or not
+    "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
+    "x_label": "Time step (t)",  # Label for the x-axis in the output plot
+    "metric": "SW",  # "speed" or "lpoa",or "lsw" , "bid", "utility", "Dist-2-Opt-SW"
+    "y_label": "Social Welfare",
+    # "||BR(z) -z||"; Social Welfare, Distance To Optimal SW r"$\varphi (z)$" Label for the y-axis in the output plot (error between best response and current state)
     "ylog_scale": False,
-    "plot_step": 10,
-    "saveFileName": "results/plot_",
-    "pltText": False,
-    "gamma": 0.5
+    # Whether to use a logarithmic scale on the y-axis in the plot, recommended for speed's convergence plot
+    "plot_step": 2,
+    "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD_
+    "pltText": True,  # Whether to display text annotations on the plot
+    "gamma": 10  # Exponent controlling the heterogeneity of the a_vector
 }
 
 SIMULATION_CONFIG_table = {
