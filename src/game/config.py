@@ -27,6 +27,8 @@ SIMULATION_CONFIG = {
     "pltText": True,  # Whether to display text annotations on the plot
     "gamma": 10  # Exponent controlling the heterogeneity of the a_vector
 }
+SIMULATION_CONFIG["Hybrid_sets"] = [list(range(0, 1)), list(range(1, int(SIMULATION_CONFIG["n"])))]
+SIMULATION_CONFIG["legends"] = SIMULATION_CONFIG["lrMethods"]
 
 SIMULATION_CONFIG_table = {
     # Simulation parameters

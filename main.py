@@ -29,18 +29,19 @@ class SimulationRunner:
         gamma = self.config["gamma"]
         tol = self.config["tol"]
         lrMethods = self.config["lrMethods"]
+        Hybrid_sets = self.config["Hybrid_sets"]
 
-
+        print(f"Hybrid_sets:{Hybrid_sets}")
         eps = epsilon * torch.ones(1)
         bid0 = init_bid * torch.ones(n)
 
         c_min = epsilon
-        d_min = 0
+        #d_min = 0
 
         a_vector = torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
         c_vector = torch.tensor([max(c -i * mu, c_min) for i in range(n)], dtype=torch.float64)
-        #dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
-        d_vector = 0.7 * d_min
+        dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
+        d_vector = 0.7 * dmin*0
 
         # Calculer l'optimum
         x_log_optimum = x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0)
@@ -57,10 +58,6 @@ class SimulationRunner:
                 'x_opt': x_log_optimum.detach().numpy()
             }
         }
-
-        set1 = torch.arange(n, dtype=torch.long)
-        nb_hybrid = len(Hybrid_funcs)
-        Hybrid_sets = torch.chunk(set1, nb_hybrid) if nb_hybrid > 0 else []
 
         for lrMethod in lrMethods:
             game_set = GameKelly(n, price, eps, delta, alpha, tol)
