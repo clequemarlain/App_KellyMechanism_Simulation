@@ -3,7 +3,7 @@ SIMULATION_CONFIG = {
     "Hybrid_funcs": ["DAQ", "DAH"],
     "T": 2000,  # Number of iterations in the learning process
     "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
-    "n": 20,  # Number of players in the game
+    "n": 10,  # Number of players in the game
     "eta": 0.5,  # Step size for the learning update
     "price": 1.0,  # Price parameter in the game (can represent a resource price)
     "a": 1000,  # Parameter for the utility function heterogeneity (a_i)

@@ -67,7 +67,7 @@ with st.sidebar:
     cfg = dict(DEFAULT_CONFIG)
 
     cfg["n"] = st.sidebar.slider("Players (n)", 2, 50, cfg["n"])
-    cfg["T"] = st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
+    cfg["T"] = st.sidebar.slider("Iterations (T)", 10, 5000, cfg["T"], step=10)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
     cfg["price"] = st.sidebar.number_input("Price", 0.0001, 1000.0, float(cfg["price"]), step=0.1, format="%.4f")
@@ -82,8 +82,6 @@ with st.sidebar:
         cfg["epsilon"] = st.number_input("ε (min bid)", 1.0, 1.0*1e2, float(cfg["epsilon"]), step=0.5, format="%.6f")
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
         cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, 10.0, float(cfg["gamma"]), step=0.1)
-
-
         # Convert input string to list of integers
         # Range of number of players
         cfg["list_n"] = st.text_area(
@@ -108,44 +106,23 @@ with st.sidebar:
         except:
             st.error("Invalid format for list_gamma, please enter numbers separated by commas.")
 
-    # --- Learning methods selection ---
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAH", "XL", "Hybrid"]
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAH", "XL","Hybrid"]
+    cfg["lrMethods"] = st.sidebar.multiselect("Learning Methods", lr_methods_all, default=cfg["lrMethods"])
 
-    selected_methods = st.multiselect(
-        "Select learning methods",
-        lr_methods_all,
-        default=["DAQ", "SBRD"]
-    )
+    selected_methods = st.multiselect("Learning methods", lr_methods_all, default=["DAQ", "SBRD"])
 
-    cfg["lrMethods"] = selected_methods
-
-    # --- If Hybrid is selected, ask for funcs + sets ---
+    cfg["Hybrid_funcs"] = []
     if "Hybrid" in selected_methods:
-        st.info("Hybrid selected: choose methods and sets for Hybrid.")
+        st.info("Hybrid selected: choose  methods to combine")
+        hybrid_methods = st.multiselect("Select methods for Hybrid", [m for m in lr_methods_all if m != "Hybrid"])
+        cfg["Hybrid_funcs"] = ["hybrid_methods"]
+    selected_methods = st.multiselect("Learning methods", lr_methods_all, default=["DAQ", "SBRD"])
 
-        # Select the methods to combine
-        hybrid_options = [m for m in lr_methods_all if m != "Hybrid"]
-        hybrid_methods = st.multiselect(
-            "Select Hybrid funcs (methods to combine)",
-            hybrid_options,
-            default=hybrid_options[:2]
-        )
+    cfg["Hybrid_funcs"] = []
+    if "Hybrid" in selected_methods:
+        st.info("Hybrid selected: choose 2 methods to combine")
+        hybrid_methods = st.multiselect("Select methods for Hybrid", [m for m in lr_methods_all if m != "Hybrid"])
         cfg["Hybrid_funcs"] = hybrid_methods
-
-        # Define subsets of players
-        hybrid_sets_str = st.text_area(
-            "Hybrid sets (JSON list of lists)",
-            value=[list(range(0, 1)), list(range(1, int(cfg["n"])))],
-            help="Define subsets of players for Hybrid learning, e.g. [[0,1],[2,3]]"
-        )
-        try:
-            cfg["Hybrid_sets"] = json.loads(hybrid_sets_str)
-        except Exception:
-            st.error("Invalid format for Hybrid_sets, please enter a valid JSON list of lists")
-
-    else:
-        cfg["Hybrid_funcs"] = []
-        cfg["Hybrid_sets"] = []
 
     metrics_all = ["utility", "bid", "speed", "SW", "LSW", "Dist_To_Optimum_SW"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
@@ -283,7 +260,7 @@ if 'results' in st.session_state:
     # Configuration du graphique
     y_label_map = {
         "speed": "Convergence error",
-        "LSW": "Liquid Social Welfare (LSW)",
+        "lSW": "Liquid Social Welfare (LSW)",
         "SW": "Social Welfare (SW)",
         "bid": "Social Welfare",
         "utility": "Player utilities",
@@ -331,7 +308,7 @@ if 'results' in st.session_state:
                 st.metric(
                     label=method,
                     value=f"{results['methods'][method]['convergence_iter']} itérations",
-                    help=f"Last error: {results['methods'][method]['error_NE'][-1]:.6f}"
+                    help=f"Dernière erreur: {results['methods'][method]['error_NE'][-1]:.6f}"
                 )
 
     with cols[-1]:
@@ -347,7 +324,6 @@ if 'results' in st.session_state:
 # -----------------------
 # SIMULATION TABLE
 # -----------------------
-
-#if st.button("📊 Run Simulation Table"):
-#    results = run_simulation(cfg, GameKelly)
-#    display_results_streamlit(results, cfg, save_path="results/table_results.csv")
+if st.button("📊 Run Simulation Table"):
+    results = run_simulation(cfg, GameKelly)
+    display_results_streamlit(results, cfg, save_path="results/table_results.csv")

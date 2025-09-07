@@ -252,6 +252,7 @@ class GameKelly:
         for idx_set, func in enumerate(Hybrid_funcs):
             func_ = getattr(self, func)
             p_ = p[idx_set]
+            #print(f"Hybrid_sets:{Hybrid_sets}, {Hybrid_sets[idx_set][:]},{z_t[Hybrid_sets[idx_set]],}")
             z_t[Hybrid_sets[idx_set]], acc_grad_copy[Hybrid_sets[idx_set]] = func_(t, a_vector[Hybrid_sets[idx_set]], c_vector[Hybrid_sets[idx_set]],
                                                                     d_vector[Hybrid_sets[idx_set]], eta, bids[Hybrid_sets[idx_set]], acc_grad[Hybrid_sets[idx_set]],p=p_, vary=vary)
         return z_t, acc_grad_copy

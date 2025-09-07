@@ -31,7 +31,7 @@ class SimulationRunner:
         lrMethods = self.config["lrMethods"]
         Hybrid_sets = self.config["Hybrid_sets"]
 
-        print(f"Hybrid_sets:{Hybrid_sets}")
+        #print(f"Hybrid_sets:{Hybrid_sets}")
         eps = epsilon * torch.ones(1)
         bid0 = init_bid * torch.ones(n)
 
