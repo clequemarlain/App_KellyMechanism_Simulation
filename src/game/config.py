@@ -23,7 +23,7 @@ SIMULATION_CONFIG = {
     "ylog_scale": False,
     # Whether to use a logarithmic scale on the y-axis in the plot, recommended for speed's convergence plot
     "plot_step": 2,
-    "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD_
+    "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD
     "pltText": True,  # Whether to display text annotations on the plot
     "gamma": 10  # Exponent controlling the heterogeneity of the a_vector
 }

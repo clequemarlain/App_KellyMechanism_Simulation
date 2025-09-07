@@ -3,6 +3,7 @@ import streamlit as st
 from collections import defaultdict
 import csv
 import torch, csv
+import pandas as pd
 from collections import defaultdict
 #from tabulate import tabulate
 
@@ -43,36 +44,35 @@ def run_simulation(config, GameKelly):
             d_vector = 0.7 * dmin *0
 
             for lrMethod in lrMethods:
-                print(f"[{run_counter}/{total_runs}] gamma={gamma}, n={n}, method={lrMethod}")
-                run_counter += 1
+                if lrMethod != "Hybrid":
+                    print(f"[{run_counter}/{total_runs}] gamma={gamma}, n={n}, method={lrMethod}")
+                    run_counter += 1
 
-                eps = epsilon * torch.ones(n)
-                bid0 = torch.ones(n)
-                d_vector = torch.zeros(n)
-                if lrMethod == "Hybrid":
-                    Hybrid_sets = [list(range(0, 2)), list(range(2, int(n)))]
+                    eps = epsilon * torch.ones(n)
+                    bid0 = torch.ones(n)
+                    d_vector = torch.zeros(n)
 
-                game = GameKelly(n, price, eps, delta, alpha, tol)
-                Bids, Welfare, Utility_set, error_NE_set = game.learning(
-                    lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
-                    vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
-                )
-                min_error = torch.min(error_NE_set)
-                nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
+                    game = GameKelly(n, price, eps, delta, alpha, tol)
+                    Bids, Welfare, Utility_set, error_NE_set = game.learning(
+                        lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
+                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
+                    )
+                    min_error = torch.min(error_NE_set)
+                    nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
 
-                results.append({
-                    "gamma": gamma,
-                    "n": n,
-                    "method": lrMethod,
-                    "iterations": nb_iter
-                })
+                    results.append({
+                        "gamma": gamma,
+                        "n": n,
+                        "method": lrMethod,
+                        "iterations": nb_iter
+                    })
     return results
 
 import io
 import csv
 from collections import defaultdict
 
-def display_results_streamlit(results, config,save_path):
+def display_results_streamlit(results, config, save_path=None):
     lrMethods = config["lrMethods"]
 
     # Organize results
@@ -99,16 +99,16 @@ def display_results_streamlit(results, config,save_path):
                 row.append(fmt(time))
             rows.append(row)
 
+    # Convert to DataFrame
+    df = pd.DataFrame(rows, columns=headers)
+
     # Streamlit display
-    st.write("### Comparison of Convergence Time")
-    st.table([headers] + rows)
+    st.write("### 📊 Comparison of Convergence Time")
+    st.dataframe(df, use_container_width=True)
 
     # Prepare CSV in memory for download
     csv_buffer = io.StringIO()
-    writer = csv.writer(csv_buffer, delimiter=";")
-    writer.writerow(headers)
-    for row in rows:
-        writer.writerow(row)
+    df.to_csv(csv_buffer, sep=";", index=False)
     csv_data = csv_buffer.getvalue()
     csv_buffer.close()
 

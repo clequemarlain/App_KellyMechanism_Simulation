@@ -172,7 +172,6 @@ with st.sidebar:
     st.sidebar.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2),
                                file_name="config.json", mime="application/json")
 
-    st.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2), file_name="config.json")
 
 # -----------------------
 # DESCRIPTION & FORMULA
@@ -190,7 +189,7 @@ if st.checkbox("Show Formulations"):
     a_i\log(x_i) - \lambda z_i, & \alpha = 1
     \end{cases}
     \quad , \quad
-    a_i = \frac{a}{(i+1)^\gamma}
+    a_i = a - i\gamma}
     \quad, \quad x_i =\frac{z_i}{\sum_{j=1}^n z_j + \delta}
     """)
 
@@ -374,6 +373,6 @@ if 'results' in st.session_state:
 # SIMULATION TABLE
 # -----------------------
 
-#if st.button("📊 Run Simulation Table"):
-#    results = run_simulation(cfg, GameKelly)
-#    display_results_streamlit(results, cfg, save_path="results/table_results.csv")
+if st.button("📊 Run Simulation Table"):
+    results = run_simulation(cfg, GameKelly)
+    display_results_streamlit(results, cfg, save_path="results/table_results.csv")
