@@ -161,13 +161,14 @@ with st.sidebar:
         cfg["Hybrid_funcs"] = []
         cfg["Hybrid_sets"] = []
 
-    metrics_all = ["utility", "bid", "speed", "SW", "LSW", "Dist_To_Optimum_SW"]
+    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     cfg["ylog_scale"] = st.sidebar.checkbox("Y log scale", value=cfg["ylog_scale"])
     cfg["plot_step"] = st.sidebar.slider("Plot step", 1, 1000, int(cfg["plot_step"]))
 
     cfg["pltText"] = st.sidebar.checkbox("Display values", value=cfg["pltText"])
+
 
     st.sidebar.download_button("⬇️ Download config JSON", data=json.dumps(cfg, indent=2),
                                file_name="config.json", mime="application/json")
@@ -185,23 +186,65 @@ if st.checkbox("Show Formulations"):
     st.latex(r"""
     \varphi_i^{\alpha}(x_i) =
     \begin{cases}
+    
     a_i\frac{x_i^{1-\alpha}}{1-\alpha} - \lambda z_i, & \alpha \neq 1 \\
     a_i\log(x_i) - \lambda z_i, & \alpha = 1
     \end{cases}
     \quad , \quad
-    a_i = a - i\gamma}
+    a_i = a - i\gamma
     \quad, \quad x_i =\frac{z_i}{\sum_{j=1}^n z_j + \delta}
     """)
 
     st.markdown(r"""
     **Where:**  
-    - \($x_i$\) = allocated resource share for player $i$  
+    - \($x_i$\)  allocated resource share for player $i$  
     - \($\alpha \ge 0$\) is the fairness parameter  
     - \($a$\) is the base utility scale  
     - \($\gamma \ge 0$\) controls heterogeneity across players
     - \($\lambda$\) the price
     """)
 
+
+# Checkbox to show metrics info
+if st.checkbox("ℹ️ Show information about metrics"):
+    st.markdown("""
+    ### 📊 Metrics Used in the Simulator  
+
+    - **[Social Welfare (SW)](https://en.wikipedia.org/wiki/Social_welfare_function)**:  
+      The aggregate efficiency of the allocation, defined as the sum of agents’ utilities at each iteration.  
+
+    - **Distance to Optimum Social Welfare ($\\text{Dist2SW}^*$):**  
+      Since the SW maximization is a concave optimization problem, we solve the KKT conditions via a bisection algorithm to obtain the optimal $\\text{SW}^*$.  
+      The distance is:  
+      $$
+      \\text{Dist2SW}^*(\\mathbf{z}) = \\big| \\text{SW}^* - \\text{SW}(\\mathbf{z}) \\big|
+      $$  
+
+    - **Speed:**  
+      A performance indicator based on the **Convergence Residual**, defined as the $\\ell_2$-distance  
+      $$
+      \\|\\text{BR}(\\mathbf{z}(t)) - \\mathbf{z}(t)\\|_2,
+      $$  
+      which measures how close the system is to a Nash equilibrium.  
+      This value decreases as the algorithm converges, and thresholds below $10^{-5}$ are typically treated as equilibrium.
+    
+    - **[Utility](https://en.wikipedia.org/wiki/Utility)**: A measure of individual satisfaction or payoff.  
+    - **[Bid](https://en.wikipedia.org/wiki/Auction)**: The amount an agent submits as demand for resources.  
+
+
+    - **Average Bids:**  
+      The long-run time-averaged bid per agent, as an indicator demand and budget usage.  
+      $$
+      \\frac{1}{T} \\sum_{t=1}^T \\mathbf{z}_i(t)),
+      $$  
+
+    - **Average Utility:**  
+      The long-run time-averaged utility per agent:  
+      $$
+      \\frac{1}{T} \\sum_{t=1}^T \\varphi_i(\\mathbf{z}(t)),
+      $$  
+      which highlights fairness and satisfaction across players.  
+    """)
 # -----------------------
 # RUN SIMULATION
 # -----------------------
@@ -247,18 +290,22 @@ if 'results' in st.session_state:
 
     for method in config['lrMethods']:
         if method in results['methods']:
-            if cfg["metric"] == "speed":
-                y_data.append(results['methods'][method]['error_NE'])
+            if cfg["metric"] == "Speed":
+                y_data.append(results['methods'][method]['Speed'])
             elif cfg["metric"] == "LSW":
                 y_data.append(results['methods'][method]['LSW'])
             elif cfg["metric"] == "Dist_To_Optimum_SW":
                 y_data.append(results['methods'][method]['Dist_To_Optimum_SW'])
             elif cfg["metric"] == "SW":
                 y_data.append(results['methods'][method]['SW'])
-            elif cfg["metric"] == "bid":
-                y_data.append(results['methods'][method]['bids'])
-            elif cfg["metric"] == "utility":
-                y_data.append(results['methods'][method]['utilities'])
+            elif cfg["metric"] == "Bid":
+                y_data.append(results['methods'][method]['Bid'])
+            elif cfg["metric"] == "Agg_Bid":
+                y_data.append(results['methods'][method]['Agg_Bid'])
+            elif cfg["metric"] == "Utility":
+                y_data.append(results['methods'][method]['Utility'])
+            elif cfg["metric"] == "Agg_Utility":
+                y_data.append(results['methods'][method]['Agg_Utility'])
             legends.append(method)
 
     # Ajout de la valeur optimale si applicable
@@ -273,7 +320,7 @@ if 'results' in st.session_state:
     fig = go.Figure()
     markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
     for i, (data, legend) in enumerate(zip(y_data, legends)):
-        if cfg["metric"] in ["bid", "utility"]:
+        if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
             # Pour les graphiques multidimensionnels
             for j in range(data.shape[1]):
                 fig.add_trace(go.Scatter(
@@ -308,14 +355,16 @@ if 'results' in st.session_state:
 
     # Configuration du graphique
     y_label_map = {
-        "speed": "Convergence error",
+        "Speed": "Convergence error",
         "LSW": "Liquid Social Welfare (LSW)",
         "SW": "Social Welfare (SW)",
-        "bid": "Social Welfare",
-        "utility": "Player utilities",
+        "Bid": "Bid of  player",
+        "Agg_Bid": "Aggregated Bid of player",
+        "Utility": "Player utility",
+        "Agg_Utility": "Player Aggregated Utility",
         "Dist_To_Optimum_SW": "Distance to the Optimal Social Welfare"
     }
-
+    config["y_label"] = y_label_map[cfg["metric"]]
     fig.update_layout(
         title=f"Evolution of {y_label_map[cfg["metric"]]}",
         xaxis_title="Iterations",
@@ -326,7 +375,7 @@ if 'results' in st.session_state:
     )
 
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
-    if cfg["metric"] in ["bid", "utility"]:
+    if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
         save_to = f"plot_{cfg['metric']}"
         figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], cfg["lrMethods"], saveFileName=save_to,
                                  ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
@@ -356,7 +405,7 @@ if 'results' in st.session_state:
                 st.metric(
                     label=method,
                     value=f"{results['methods'][method]['convergence_iter']} itérations",
-                    help=f"Last error: {results['methods'][method]['error_NE'][-1]:.6f}"
+                    help=f"Last error: {results['methods'][method]['Speed'][-1]:.6f}"
                 )
 
     with cols[-1]:

@@ -158,6 +158,7 @@ def BR_alpha_fair(eps, c_vector, z: torch.Tensor, p,
 def Valuation(x, a_vector, d_vector, alpha):
     V = V_func(x, alpha)
     return a_vector * V
+
 def SW_func(x, budgets, a_vector, d_vector, alpha):
     V = a_vector * V_func(x, alpha)
     sw = torch.sum(V)
@@ -383,17 +384,17 @@ class GameKelly:
 
         acc_grad = torch.zeros(self.n, dtype=torch.float64)
         matrix_bids = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
-        Avg_bids = matrix_bids.clone()
+        agg_bids = matrix_bids.clone()
         vec_LSW = torch.zeros(n_iter + 1, dtype=torch.float64)
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         agg_utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         error_NE = torch.zeros(n_iter + 1, dtype=torch.float64)
         matrix_bids[0] = bids.clone()
-        Avg_bids[0] = bids.clone()
+        agg_bids[0] = bids.clone()
         error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
-        utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)
-        agg_utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)
+        utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
+        agg_utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
         vec_LSW[0] = LSW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
         vec_SW[0] = SW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
 
@@ -409,12 +410,12 @@ class GameKelly:
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             utiliy[t] = Valuation(self.fraction_resource(matrix_bids[t]), a_vector, d_vector, self.alpha) -  self.price * matrix_bids[t] + d_vector
-            agg_utiliy[t] = 1/t * (agg_utiliy[t]+agg_utiliy[t-1])
+            agg_utiliy[t] = 1/(t+1) * torch.sum(utiliy[:t], dim=0)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
-            Avg_bids[t] = self.AverageBid(matrix_bids, t)
+            agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
             if stop and err <= self.tol:
                 break
-        Bids = [matrix_bids[:k, :], Avg_bids[:k, :]]
+        Bids = [matrix_bids[:k, :], agg_bids[:k, :]]
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
         Utility_set = [utiliy[:k, :], agg_utiliy[:k, :]]
         Welfare = [vec_SW[:k], vec_LSW[:k]]

@@ -71,13 +71,14 @@ class SimulationRunner:
             LSW = Welfare[1]
 
             self.results['methods'][lrMethod] = {
-                'error_NE': error_NE_set.detach().numpy(),
+                'Speed': error_NE_set.detach().numpy(),
                 'LSW': LSW.detach().numpy(),
                 'SW': SocialWelfare.detach().numpy(),
                 'Dist_To_Optimum_SW': Distance2optSW.detach().numpy(),
-                'bids': Bids[0].detach().numpy(),
-                'utilities': Utility_set[0].detach().numpy(),
-                'avg_bids': Utility_set[1].detach().numpy(),
+                'Bid': Bids[0].detach().numpy(),
+                'Agg_Bid': Bids[1].detach().numpy(),
+                'Utility': Utility_set[0].detach().numpy(),
+                'Agg_Utility': Utility_set[1].detach().numpy(),
                 'final_bids': Bids[0][-1].detach().numpy(),
                 'convergence_iter': torch.argmin(error_NE_set).item() if torch.min(error_NE_set) <= tol else T
             }
