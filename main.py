@@ -38,7 +38,7 @@ class SimulationRunner:
         c_min = epsilon
         #d_min = 0
 
-        a_vector = torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
+        a_vector = torch.tensor(self.config["a_vector"], dtype=torch.float64)#torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
         c_vector = torch.tensor([max(c -i * mu, c_min) for i in range(n)], dtype=torch.float64)
         dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
         d_vector = 0.7 * dmin*0

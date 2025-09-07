@@ -1,13 +1,13 @@
 import json, io
 import numpy as np
-import torch
+import torch,ast
 import streamlit as st
 from pdf2image import convert_from_path
 from PIL import Image
 import plotly.graph_objects as go
 from main import SimulationRunner
 
-from src.game.utils import GameKelly, plotGame, plotGame_dim_N
+from src.game.utils import *
 from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
 from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
@@ -83,6 +83,20 @@ with st.sidebar:
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
         cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, 10.0, float(cfg["gamma"]), step=0.1)
 
+        cfg["a_vector"] = st.text_area(
+            "List of heterogeneous values a_i",
+            value=str([max(cfg["a"] - cfg["gamma"] * i, cfg['a_min']) for i in range(cfg["n"])]),
+            help="a_i heterogeneity values, e.g: [10,20] for 2 players"
+        )
+
+        try:
+            # Essayons de parser directement comme une liste Python
+            cfg["a_vector"] = ast.literal_eval(cfg["a_vector"])
+            if not isinstance(cfg["a_vector"], list):
+                raise ValueError
+            cfg["a_vector"] = [int(x) for x in cfg["a_vector"]]
+        except Exception:
+            st.error("Invalid format for a_vector. Please enter a list, e.g. [10, 20, 30].")
 
         # Convert input string to list of integers
         # Range of number of players
@@ -151,7 +165,7 @@ with st.sidebar:
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     cfg["ylog_scale"] = st.sidebar.checkbox("Y log scale", value=cfg["ylog_scale"])
-    cfg["plot_step"] = st.sidebar.slider("Plot step", 1, 100, int(cfg["plot_step"]))
+    cfg["plot_step"] = st.sidebar.slider("Plot step", 1, 1000, int(cfg["plot_step"]))
 
     cfg["pltText"] = st.sidebar.checkbox("Display values", value=cfg["pltText"])
 
@@ -258,27 +272,40 @@ if 'results' in st.session_state:
 
     # Création du graphique avec Plotly
     fig = go.Figure()
-
+    markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
     for i, (data, legend) in enumerate(zip(y_data, legends)):
         if cfg["metric"] in ["bid", "utility"]:
             # Pour les graphiques multidimensionnels
             for j in range(data.shape[1]):
                 fig.add_trace(go.Scatter(
-                    x=x_data,
-                    y=data[:, j],
-                    mode='lines',
-                    name=f"{legend} - Joueur {j + 1}",
-                    opacity=0.7
+                    x=x_data[::cfg["plot_step"]],
+                    y=data[:, j][::cfg["plot_step"]],
+                    mode="lines+markers",  # ✅ ligne + marqueur
+                    name=f"Joueur {j + 1}",
+                    line=dict(color=colors[i % len(colors)], width=3),  # couleur de ligne
+                    marker=dict(symbol=markers2[j % len(markers2)], size=10),  # style du marker
+                    opacity=0.8
                 ))
+
         else:
             # Pour les graphiques simples
             fig.add_trace(go.Scatter(
-                x=x_data,
-                y=data,
+                x=x_data[::cfg["plot_step"]],
+                y=data[::cfg["plot_step"]],
                 mode='lines+markers',
-                name=legend,
-                line=dict(width=3)
+                #name=legend,
+                line=dict(width=3),
+                showlegend=False  # 👈 on masque
             ))
+    # --- Custom legend (couleur + linestyle uniquement) ---
+    for i, legend in enumerate(legends):
+        fig.add_trace(go.Scatter(
+            x=[None], y=[None],  # "trace fantôme"
+            mode="lines",
+            line=dict(color=colors[i % len(colors)], width=3),
+            name=legend,  # ✅ seulement le nom de la méthode
+            showlegend=True
+        ))
 
     # Configuration du graphique
     y_label_map = {
@@ -300,7 +327,6 @@ if 'results' in st.session_state:
     )
 
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
-    print(f"y_data:{y_data}")
     if cfg["metric"] in ["bid", "utility"]:
         save_to = f"plot_{cfg['metric']}"
         figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], cfg["lrMethods"], saveFileName=save_to,
