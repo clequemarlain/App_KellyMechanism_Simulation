@@ -388,13 +388,13 @@ class GameKelly:
         vec_LSW = torch.zeros(n_iter + 1, dtype=torch.float64)
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
-        agg_utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
+        agg_utility = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         error_NE = torch.zeros(n_iter + 1, dtype=torch.float64)
         matrix_bids[0] = bids.clone()
         agg_bids[0] = bids.clone()
         error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
         utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
-        agg_utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
+        agg_utility[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
         vec_LSW[0] = LSW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
         vec_SW[0] = SW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
 
@@ -410,16 +410,16 @@ class GameKelly:
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             utiliy[t] = Valuation(self.fraction_resource(matrix_bids[t]), a_vector, d_vector, self.alpha) -  self.price * matrix_bids[t] + d_vector
-            agg_utiliy[t] = 1/(t+1) * torch.sum(utiliy[:t], dim=0)
+            agg_utility[t] = 1/(t+1) * torch.sum(utiliy[:t], dim=0)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
             if stop and err <= self.tol:
                 break
         Bids = [matrix_bids[:k, :], agg_bids[:k, :]]
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
-        Utility_set = [utiliy[:k, :], agg_utiliy[:k, :]]
+        Utility_set = [utiliy[:k, :], agg_utility[:k, :]]
         Welfare = [vec_SW[:k], vec_LSW[:k]]
-        return Bids, Welfare,Utility_set, error_NE[:k]  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
+        return Bids, Welfare, Utility_set, error_NE[:k]  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
 
 
 def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale, fontsize=40, markersize=20, linewidth=12,linestyle="-", pltText=False, step=1):
