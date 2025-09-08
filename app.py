@@ -1,6 +1,6 @@
 import json, io
 import numpy as np
-import torch,ast
+import torch,ast, random
 import streamlit as st
 from pdf2image import convert_from_path
 from PIL import Image
@@ -133,33 +133,86 @@ with st.sidebar:
 
     cfg["lrMethods"] = selected_methods
 
-    # --- If Hybrid is selected, ask for funcs + sets ---
+    # --- Hybrids configuration ---
+    cfg["Hybrids"] = []  # will store multiple hybrid configs
+    LEGENDS = [m for m in selected_methods if m != "Hybrid"]
+
     if "Hybrid" in selected_methods:
-        st.info("Hybrid selected: choose methods and sets for Hybrid.")
+        st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
 
-        # Select the methods to combine
+        # Number of hybrids
+        num_hybrids = st.number_input(
+            "How many Hybrid algorithms do you want to configure?",
+            min_value=1,
+            max_value=10,
+            value=1,
+            step=1
+        )
+
         hybrid_options = [m for m in lr_methods_all if m != "Hybrid"]
-        hybrid_methods = st.multiselect(
-            "Select Hybrid funcs (methods to combine)",
-            hybrid_options,
-            default=hybrid_options[:2]
-        )
-        cfg["Hybrid_funcs"] = hybrid_methods
 
-        # Define subsets of players
-        hybrid_sets_str = st.text_area(
-            "Hybrid sets (JSON list of lists)",
-            value=[list(range(0, 1)), list(range(1, int(cfg["n"])))],
-            help="Define subsets of players for Hybrid learning, e.g. [[0,1],[2,3]]"
-        )
-        try:
-            cfg["Hybrid_sets"] = json.loads(hybrid_sets_str)
-        except Exception:
-            st.error("Invalid format for Hybrid_sets, please enter a valid JSON list of lists")
+        #selected_methods =  [m for m in selected_methods if m != "Hybrid"]
 
-    else:
-        cfg["Hybrid_funcs"] = []
-        cfg["Hybrid_sets"] = []
+        h_idx = 1
+        # Initialise la liste des k si pas déjà définie
+        if "Nb_A1" not in cfg:
+            cfg["Nb_A1"] = []
+
+        for h in range(num_hybrids):
+            h_idx += 1
+            st.markdown(f"#### ⚙️ Hybrid #{h + 1}")
+
+            if h > 0:
+                cfg["lrMethods"].append("Hybrid")
+
+            # --- Select funcs ---
+            funcs = st.multiselect(
+                f"Select Hybrid funcs for Hybrid #{h + 1}",
+                hybrid_options,
+                default=hybrid_options[:2],
+                key=f"hybrid_funcs_{h}"
+            )
+
+            # --- Select k ---
+            k = st.number_input(
+                f"Number of players in first subset for Hybrid #{h + 1}",
+                min_value=1,
+                max_value=cfg["n"] - 1,
+                value=2,
+                step=1,
+                key=f"hybrid_k_{h}"  # ✅ unique par Hybrid
+            )
+
+            # Stocker ce k dans la liste
+            cfg["Nb_A1"].append(int(k))
+
+            # Légende avec le k correspondant
+            LEGENDS.append(f"Hybrid ({funcs[0] if funcs else 'None'}, {int(k)})")
+
+            # --- Generate random sets ---
+            subset = random.sample(range(cfg["n"]), int(k))
+            remaining = [i for i in range(cfg["n"]) if i not in subset]
+            cfg["Hybrid_sets"] = [subset, remaining]
+
+            # --- Let user edit sets manually ---
+            sets_str = st.text_area(
+                f"Hybrid sets for Hybrid #{h + 1} (JSON list of lists)",
+                value=json.dumps(cfg["Hybrid_sets"]),
+                key=f"hybrid_sets_{h}",
+                help="e.g. [[0,1],[2,3]]"
+            )
+
+            try:
+                sets = json.loads(sets_str)
+            except Exception:
+                st.error(f"Invalid format for Hybrid_sets #{h + 1}, please enter a valid JSON list of lists")
+                sets = []
+
+            # --- Save Hybrid config ---
+            cfg["Hybrids"].append({
+                "Hybrid_funcs": funcs,
+                "Hybrid_sets": sets
+            })
 
     metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
@@ -287,8 +340,9 @@ if 'results' in st.session_state:
     x_data = np.arange(config['T'])
     y_data = []
     legends = []
+    for method in LEGENDS:
 
-    for method in config['lrMethods']:
+        #if method == "Hybrid":
         if method in results['methods']:
             if cfg["metric"] == "Speed":
                 y_data.append(results['methods'][method]['Speed'])
@@ -298,6 +352,7 @@ if 'results' in st.session_state:
                 y_data.append(results['methods'][method]['Dist_To_Optimum_SW'])
             elif cfg["metric"] == "SW":
                 y_data.append(results['methods'][method]['SW'])
+                print("ffdghjhdf", LEGENDS, len(y_data), method)
             elif cfg["metric"] == "Bid":
                 y_data.append(results['methods'][method]['Bid'])
             elif cfg["metric"] == "Agg_Bid":
@@ -311,15 +366,18 @@ if 'results' in st.session_state:
     # Ajout de la valeur optimale si applicable
     if cfg["metric"] in ["LSW", "SW"]:
         if cfg["metric"] == "SW":
-            y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
-        else:
             y_data.append(np.full_like(y_data[0], results['optimal']['SW']))
-        legends.append("Optimal")
 
+        else:
+            y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
+        LEGENDS.append("Optimal")
+
+#    legends = LEGENDS
     # Création du graphique avec Plotly
     fig = go.Figure()
     markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
-    for i, (data, legend) in enumerate(zip(y_data, legends)):
+    h_idx = 1
+    for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
         if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
             # Pour les graphiques multidimensionnels
             for j in range(data.shape[1]):
@@ -327,37 +385,32 @@ if 'results' in st.session_state:
                     x=x_data[::cfg["plot_step"]],
                     y=data[:, j][::cfg["plot_step"]],
                     mode="lines+markers",  # ✅ ligne + marqueur
-                    name=f"Joueur {j + 1}",
+                    name=f"{legend} -- Joueur {j + 1}",
                     line=dict(color=colors[i % len(colors)], width=3),  # couleur de ligne
-                    marker=dict(symbol=markers2[j % len(markers2)], size=10),  # style du marker
+                    marker=dict(
+                        symbol=markers2[j % len(markers2)],  # type de marqueur
+                        size=10,  # ✅ taille fixe (indépendante de plot_step)
+                        line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
+                    ),
                     opacity=0.8
                 ))
 
         else:
-            # Pour les graphiques simples
             fig.add_trace(go.Scatter(
                 x=x_data[::cfg["plot_step"]],
                 y=data[::cfg["plot_step"]],
                 mode='lines+markers',
-                #name=legend,
-                line=dict(width=3),
-                showlegend=False  # 👈 on masque
+                name=legend,
+                line=dict(color=colors[i % len(colors)], width=3),
+                #showlegend=False  # 👈 on masque
             ))
-    # --- Custom legend (couleur + linestyle uniquement) ---
-    for i, legend in enumerate(legends):
-        fig.add_trace(go.Scatter(
-            x=[None], y=[None],  # "trace fantôme"
-            mode="lines",
-            line=dict(color=colors[i % len(colors)], width=3),
-            name=legend,  # ✅ seulement le nom de la méthode
-            showlegend=True
-        ))
+
 
     # Configuration du graphique
     y_label_map = {
         "Speed": "Convergence error",
-        "LSW": "Liquid Social Welfare (LSW)",
-        "SW": "Social Welfare (SW)",
+        "LSW": "Liquid Social Welfare",
+        "SW": "Social Welfare",
         "Bid": "Bid of  player",
         "Agg_Bid": "Aggregate Bid of player",
         "Utility": "Player utility",
@@ -375,14 +428,15 @@ if 'results' in st.session_state:
     )
 
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
+    print(LEGENDS, "len", len(y_data))
     if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
         save_to = f"plot_{cfg['metric']}"
-        figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], cfg["lrMethods"], saveFileName=save_to,
+        figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                                  ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
-        print(figpath)
     else:
+
         save_to = f"plot_{cfg['metric']}"
-        figpath = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], cfg["lrMethods"], saveFileName=save_to,
+        figpath = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                        ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
 
     fig.update_layout(

@@ -24,12 +24,13 @@ class SimulationRunner:
         delta = self.config["delta"]
         epsilon = self.config["epsilon"]
         Hybrid_funcs = self.config["Hybrid_funcs"]
+        Hybrid_sets = self.config["Hybrid_sets"]
         lr_vary = self.config["lr_vary"]
         alpha = self.config["alpha"]
         gamma = self.config["gamma"]
         tol = self.config["tol"]
         lrMethods = self.config["lrMethods"]
-        Hybrid_sets = self.config["Hybrid_sets"]
+
 
         #print(f"Hybrid_sets:{Hybrid_sets}")
         eps = epsilon * torch.ones(1)
@@ -58,8 +59,17 @@ class SimulationRunner:
                 'x_opt': x_log_optimum.detach().numpy()
             }
         }
+        idx = 0
 
         for lrMethod in lrMethods:
+            lrMethod2 = lrMethod
+            if lrMethod == "Hybrid":
+                Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
+                Hybrid_funcs = self.config["Hybrids"][idx]["Hybrid_funcs"]
+
+                lrMethod2 = str(f"Hybrid ({str(Hybrid_funcs[0])}, {self.config["Nb_A1"][idx]})")
+                idx+=1
+
             game_set = GameKelly(n, price, eps, delta, alpha, tol)
             Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
                 lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
@@ -70,7 +80,8 @@ class SimulationRunner:
             Distance2optSW = SW_opt - Welfare[0]
             LSW = Welfare[1]
 
-            self.results['methods'][lrMethod] = {
+
+            self.results['methods'][lrMethod2] = {
                 'Speed': error_NE_set.detach().numpy(),
                 'LSW': LSW.detach().numpy(),
                 'SW': SocialWelfare.detach().numpy(),

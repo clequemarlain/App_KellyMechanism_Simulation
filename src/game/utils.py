@@ -493,7 +493,7 @@ def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog
         plt.yscale("log")
     for i in range(len(legends)):  # Évite un dépassement d'index
         color = colors[i]
-        n = len((y_data[i,0]))
+        n = y_data[i].shape[1]
         for j in range(n):
             plt.plot(
                 x_data[::step],
