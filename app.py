@@ -359,10 +359,10 @@ if 'results' in st.session_state:
         "LSW": "Liquid Social Welfare (LSW)",
         "SW": "Social Welfare (SW)",
         "Bid": "Bid of  player",
-        "Agg_Bid": "Aggregated Bid of player",
+        "Agg_Bid": "Aggregate Bid of player",
         "Utility": "Player utility",
-        "Agg_Utility": "Player Aggregated Utility",
-        "Dist_To_Optimum_SW": "Distance to the Optimal Social Welfare"
+        "Agg_Utility": "Player Aggregate Utility",
+        "Dist_To_Optimum_SW": "Distance to the Optimal SW"
     }
     config["y_label"] = y_label_map[cfg["metric"]]
     fig.update_layout(
