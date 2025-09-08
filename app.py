@@ -68,7 +68,7 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     cfg = dict(DEFAULT_CONFIG)
 
-    cfg["n"] = st.sidebar.slider("Players (n)", 2, 50, cfg["n"])
+    cfg["n"] = st.sidebar.slider("Players (n)", 2, 200, cfg["n"])
     cfg["T"] = st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
@@ -83,7 +83,7 @@ with st.sidebar:
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 1.0, 1.0*1e2, float(cfg["epsilon"]), step=0.5, format="%.6f")
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
-        cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, 10.0, float(cfg["gamma"]), step=0.1)
+        cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, 100.0, float(cfg["gamma"]), step=0.1)
 
         cfg["a_vector"] = st.text_area(
             "List of heterogeneous values a_i",
@@ -432,16 +432,15 @@ if 'results' in st.session_state:
     )
 
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
-    print(LEGENDS, "len", len(y_data))
     if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
         save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-                                 ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
+                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
     else:
 
         save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-                       ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
+                       ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
     fig.update_layout(
         title=f"Evolution of {y_label_map[cfg['metric']]}",
