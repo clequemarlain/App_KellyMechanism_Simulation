@@ -61,6 +61,8 @@ st.image(gif_bytes)
 # -----------------------
 # SIDEBAR CONFIG
 # -----------------------
+
+
 with st.sidebar:
 
     st.header("⚙️ Configuration")
@@ -157,6 +159,8 @@ with st.sidebar:
         # Initialise la liste des k si pas déjà définie
         if "Nb_A1" not in cfg:
             cfg["Nb_A1"] = []
+        else:
+            cfg["Nb_A1"] = cfg["Nb_A1"]
 
         for h in range(num_hybrids):
             h_idx += 1
@@ -430,12 +434,12 @@ if 'results' in st.session_state:
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
     print(LEGENDS, "len", len(y_data))
     if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
-        save_to = f"plot_{cfg['metric']}"
+        save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                                  ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
     else:
 
-        save_to = f"plot_{cfg['metric']}"
+        save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                        ylog_scale=cfg["ylog_scale"], step=cfg["plot_step"])
 

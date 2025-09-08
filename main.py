@@ -77,7 +77,7 @@ class SimulationRunner:
             )
 
             SocialWelfare = Welfare[0]
-            Distance2optSW = SW_opt - Welfare[0]
+            Distance2optSW = 1/n * torch.abs(SW_opt - Welfare[0])
             LSW = Welfare[1]
 
 
