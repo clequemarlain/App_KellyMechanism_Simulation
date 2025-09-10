@@ -315,7 +315,7 @@ class GameKelly:
         z_t = Q1(acc_grad_copy, self.epsilon, c_vector, self.price)
         return z_t, acc_grad_copy
 
-    def DAH(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def DAE(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
         def phi(z):
             x = self.fraction_resource(z)
             V = V_func(x, self.alpha)
@@ -492,7 +492,7 @@ def plotGame(
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else colors[i]), linestyle=linestyle if linestyle != "" else "-", linewidth=linewidth)
+        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else colors[i]), linestyle=linestyle if linestyle != "" else "-", marker=(markers[i] if legends[i] != "Optimal" else ""), markersize=markersize, linewidth=linewidth)
         for i in range(len(legends))
     ]
 
@@ -576,7 +576,7 @@ def plotGame_dim_N(
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=colors[i], linestyle=linestyles[i], linewidth=linewidth)
+        Line2D([0], [0], color=colors[i], marker=markers[i], markersize=markersize, linestyle=linestyles[i], linewidth=linewidth)
         for i in range(len(legends))
     ]
 

@@ -68,8 +68,8 @@ with st.sidebar:
     st.header("⚙️ Configuration")
     cfg = dict(DEFAULT_CONFIG)
 
-    cfg["n"] = st.sidebar.slider("Players (n)", 2, 200, cfg["n"])
-    cfg["T"] = st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
+    cfg["n"] = st.number_input("Players (n)", 2, 100, cfg["n"], step=1)
+    cfg["T"] = st.number_input("Iterations (T)", 10, 10000, cfg["T"], step=10) #st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
     cfg["Nb_random_sim"] = st.number_input("Number of random simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
@@ -80,7 +80,7 @@ with st.sidebar:
     )
     cfg["keep_initial_bid"] = st.checkbox(
         f"Keep the same initial bid for all {cfg['Nb_random_sim']} simulations.",
-        value=True,  # default = cfg["lr_vary"]
+        value=False,  # default = cfg["lr_vary"]
        # help="Check this box to enable learning rate variation."
     )
 
@@ -136,7 +136,7 @@ with st.sidebar:
             st.error("Invalid format for list_gamma, please enter numbers separated by commas.")
 
     # --- Learning methods selection ---
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAH", "XL", "Hybrid"]
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAE", "XL", "Hybrid"]
 
     selected_methods = st.multiselect(
         "Select learning methods",
@@ -233,7 +233,7 @@ with st.sidebar:
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     cfg["ylog_scale"] = st.sidebar.checkbox("Y log scale", value=cfg["ylog_scale"])
-    cfg["plot_step"] = st.sidebar.slider("Plot step", 1, 1000, int(cfg["plot_step"]))
+    cfg["plot_step"] = st.number_input("Plot step", 1, 1000, int(cfg["plot_step"]), step=1)
 
     cfg["pltText"] = st.sidebar.checkbox("Display values", value=cfg["pltText"])
 
