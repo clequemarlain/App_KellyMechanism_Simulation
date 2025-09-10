@@ -422,76 +422,120 @@ class GameKelly:
         return Bids, Welfare, Utility_set, error_NE[:k]  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
 
 
-def plotGame(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale, fontsize=40, markersize=20, linewidth=12,linestyle="-", pltText=False, step=1):
-
+def plotGame(
+    x_data, y_data, x_label, y_label, legends, saveFileName,
+    ylog_scale, fontsize=40, markersize=20, linewidth=12,
+    linestyle="-", pltText=False, step=1
+):
     plt.figure(figsize=(18, 12))
-    linewidth = linewidth; markersize = markersize;  y_data = np.array(y_data)
+    y_data = np.array(y_data)
 
     plt.rcParams.update({'font.size': fontsize})
-
     x_data_copy = x_data.copy()
 
     if ylog_scale:
         plt.yscale("log")
-    for i in range(len(legends)):  # Évite un dépassement d'index
-        color = colors[i]
-        if legends[i] == "Optimal":
-            color = "red"
 
+    # --- Plot curves ---
+    for i in range(len(legends)):
+        color = "red" if legends[i] == "Optimal" else colors[i]
 
-        if linestyle=="":
+        if linestyle == "":
             mask = y_data[i] > 0
-            #y_data[mask] = y_data[mask]
-            print(y_data[i][mask].shape[0])
-            x_data = [x_data_copy[i]]*y_data[i][mask].shape[0]
-            plt.plot(x_data[::step],
-                     (y_data[i][mask])[::step],
-                     linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, color=color,
-                     label=f"{legends[i]}")
-
+            x_data_tmp = [x_data_copy[i]] * y_data[i][mask].shape[0]
+            plt.plot(
+                x_data_tmp[::step],
+                (y_data[i][mask])[::step],
+                linestyle=linestyle,
+                linewidth=linewidth,
+                marker=markers[i],
+                markersize=markersize,
+                color=color,
+                label=f"{legends[i]}"
+            )
         else:
-            plt.plot(x_data[::step],
-                     (y_data[i])[::step],
-                     linestyle=linestyle, linewidth=linewidth, marker=markers[i], markersize=markersize, color=color,
-                     label=f"{legends[i]}")
+            plt.plot(
+                x_data[::step],
+                (y_data[i])[::step],
+                linestyle=linestyle,
+                linewidth=linewidth,
+                marker=markers[i],
+                markersize=markersize,
+                color=color,
+                label=f"{legends[i]}"
+            )
 
         if pltText:
             last_x = len(y_data[i]) - 1
             last_y = y_data[i][-1]
-            y_offset = 0
+            plt.text(
+                last_x, last_y,
+                f"{last_y:.2e}",
+                fontweight="bold",
+                fontsize=fontsize,
+                bbox=dict(facecolor='white', alpha=0.7),
+                verticalalignment='bottom', horizontalalignment='right'
+            )
 
-            plt.text(last_x, last_y + y_offset, f"{last_y:.2e}",fontweight="bold",
-                          fontsize=fontsize, bbox=dict(facecolor='white', alpha=0.7),
-                          verticalalignment='bottom', horizontalalignment='right')
-
-        plt.legend(frameon=True, facecolor="white", edgecolor="black", prop={"weight": "bold"})
-
+    # --- Axis formatting ---
     for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
-        label.set_fontweight("bold")  # ✅ Graduation des axes en gras
+        label.set_fontweight("bold")
 
     plt.ylabel(f"{y_label}", fontweight="bold")
     plt.xlabel(f"{x_label}", fontweight="bold")
     plt.grid(True)
     plt.tight_layout()
-    figpath = f"{saveFileName}.pdf"
-    plt.savefig(figpath, format="pdf")
-    plt.close()  # ferme la figure (évite d'afficher dans Streamlit)
 
-    return figpath  # ✅ retourne le chemin du fichier
+    # --- Save plot without legend ---
+    figpath_plot = f"{saveFileName}_plot.pdf"
+    plt.savefig(figpath_plot, format="pdf")
 
-def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog_scale, fontsize=40, markersize=25, linewidth=12,linestyle="-", pltText=False, step=1):
+    # --- Build legend handles ---
+    legend_handles = [
+        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else colors[i]), linestyle=linestyle if linestyle != "" else "-", linewidth=linewidth)
+        for i in range(len(legends))
+    ]
 
+    # --- Save legend separately ---
+    fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
+    ax = fig_legend.add_subplot(111)
+    ax.axis("off")
+
+    ax.legend(
+        legend_handles,
+        legends,
+        frameon=True,
+        facecolor="white",
+        edgecolor="black",
+        prop={"weight": "bold", "size": fontsize},
+        ncol=len(legends),  # ✅ all items on one line
+        loc="center",  # ✅ centered in the figure
+        bbox_to_anchor=(0.5, 0.5)
+    )
+
+    figpath_legend = f"{saveFileName}_legend.pdf"
+    fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
+    plt.close(fig_legend)
+
+    return figpath_plot, figpath_legend
+
+def plotGame_dim_N(
+    x_data, y_data, x_label, y_label, legends, saveFileName,
+    ylog_scale, fontsize=40, markersize=25, linewidth=12, linestyle="-",
+    pltText=False, step=1
+):
     plt.figure(figsize=(18, 12))
-    linewidth = linewidth; markersize = markersize;  y_data = np.array(y_data)
+    y_data = np.array(y_data)
 
     plt.rcParams.update({'font.size': fontsize})
 
-    x_data_copy = x_data.copy()
     linestyles = ["-", "--", ":", "--"]
 
     if ylog_scale:
         plt.yscale("log")
-    for i in range(len(legends)):  # Évite un dépassement d'index
+
+    # --- Plot curves ---
+    for i in range(len(legends)):
         color = colors[i]
         n = y_data[i].shape[1]
         for j in range(n):
@@ -505,33 +549,56 @@ def plotGame_dim_N(x_data, y_data, x_label, y_label, legends, saveFileName, ylog
                 color=color,
             )
 
-        # --- Custom legend: linestyle + color only (no marker) ---
-        legend_handles = [
-            Line2D([0], [0], color=colors[i], linestyle=linestyles[i], linewidth=linewidth)
-            for i in range(len(legends))
-        ]
-
-        #plt.legend(legend_handles, legends)
         if pltText:
             last_x = len(y_data[i]) - 1
             last_y = y_data[i][-1]
-            y_offset = 0
-            plt.text(last_x, last_y + y_offset, f"{last_y:.2e}",fontweight="bold",
-                          fontsize=fontsize, bbox=dict(facecolor='white', alpha=0.7),
-                          verticalalignment='bottom', horizontalalignment='right')
+            plt.text(
+                last_x, last_y,
+                f"{last_y:.2e}",
+                fontweight="bold",
+                fontsize=fontsize,
+                bbox=dict(facecolor='white', alpha=0.7),
+                verticalalignment='bottom', horizontalalignment='right'
+            )
 
-        plt.legend(legend_handles, legends,frameon=True, facecolor="white", edgecolor="black", prop={"weight": "bold"})
-
+    # --- Axis formatting ---
     for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
-        label.set_fontweight("bold")  # ✅ Graduation des axes en gras
+        label.set_fontweight("bold")
 
     plt.ylabel(f"{y_label}", fontweight="bold")
     plt.xlabel(f"{x_label}", fontweight="bold")
     plt.grid(True)
     plt.tight_layout()
 
-    figpath = f"{saveFileName}.pdf"
-    plt.savefig(figpath, format="pdf")
-    plt.close()  # ferme la figure (évite d'afficher dans Streamlit)
+    # --- Save plot without legend ---
+    figpath_plot = f"{saveFileName}_plot.pdf"
+    plt.savefig(figpath_plot, format="pdf")
 
-    return figpath  # ✅ retourne le chemin du fichier
+    # --- Build legend handles ---
+    legend_handles = [
+        Line2D([0], [0], color=colors[i], linestyle=linestyles[i], linewidth=linewidth)
+        for i in range(len(legends))
+    ]
+
+    # --- Save legend separately ---
+    fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
+    ax = fig_legend.add_subplot(111)
+    ax.axis("off")
+
+    ax.legend(
+        legend_handles,
+        legends,
+        frameon=True,
+        facecolor="white",
+        edgecolor="black",
+        prop={"weight": "bold", "size": fontsize},
+        ncol=len(legends),  # ✅ all items on one line
+        loc="center",  # ✅ centered in the figure
+        bbox_to_anchor=(0.5, 0.5)
+    )
+
+    figpath_legend = f"{saveFileName}_legend.pdf"
+    fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
+    plt.close(fig_legend)
+
+    return figpath_plot, figpath_legend

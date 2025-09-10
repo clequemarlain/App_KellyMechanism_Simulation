@@ -52,7 +52,7 @@ img_list[0].save(
     format='GIF',
     save_all=True,
     append_images=img_list[1:],
-    duration=3000,
+    duration=3*1000, # 3 seconds
     loop=0
 )
 gif_bytes.seek(0)
@@ -70,8 +70,20 @@ with st.sidebar:
 
     cfg["n"] = st.sidebar.slider("Players (n)", 2, 200, cfg["n"])
     cfg["T"] = st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
+    cfg["Nb_random_sim"] = st.number_input("Number of random simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
+    cfg["lr_vary"] = st.checkbox(
+        "Vary learning rate during training?",
+        value=cfg["lr_vary"],  # default = cfg["lr_vary"]
+        help="Check this box to enable learning rate variation."
+    )
+    cfg["keep_initial_bid"] = st.checkbox(
+        f"Keep the same initial bid for all {cfg['Nb_random_sim']} simulations.",
+        value=True,  # default = cfg["lr_vary"]
+       # help="Check this box to enable learning rate variation."
+    )
+
     cfg["price"] = st.sidebar.number_input("Price", 0.0001, 1000.0, float(cfg["price"]), step=0.1, format="%.4f")
 
     with st.sidebar.expander("Advanced Parameters"):
@@ -79,7 +91,6 @@ with st.sidebar:
         cfg["a_min"] = st.number_input("minimum a (base utility scale)", 0.1, 1e6, float(cfg["a_min"]), step=1.0, format="%.4f")
         cfg["mu"] = st.number_input("μ (c heterogeneity)", 0.0, 4.0, float(cfg["mu"]), step=0.1)
         cfg["c"] = st.number_input("c (budget base)", 0.0001, 1e6, float(cfg["c"]), step=10.0, format="%.4f")
-        cfg["init_bid"] = st.number_input("initial bid", 0.0001, 1e6, float(cfg["init_bid"]), step=10.0, format="%.4f")
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 1.0, 1.0*1e2, float(cfg["epsilon"]), step=0.5, format="%.6f")
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
@@ -191,7 +202,7 @@ with st.sidebar:
             cfg["Nb_A1"].append(int(k))
 
             # Légende avec le k correspondant
-            LEGENDS.append(f"Hybrid ({funcs[0] if funcs else 'None'}, {int(k)})")
+            LEGENDS.append(f"Hybrid (A1 :{k}, A2:{cfg["n"] - k})")
 
             # --- Generate random sets ---
             subset = random.sample(range(cfg["n"]), int(k))
@@ -434,12 +445,12 @@ if 'results' in st.session_state:
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
     if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
         save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        figpath=plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+        figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                                  ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
     else:
 
         save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        figpath = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+        figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                        ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
     fig.update_layout(
@@ -473,8 +484,34 @@ if 'results' in st.session_state:
         )
     with col2:
         st.subheader("Outputs")
-        with open(figpath, "rb") as f:
-            st.download_button("⬇️ Download PDF", data=f.read(), file_name=figpath, mime="application/pdf")
+
+        # --- Plot PDF ---
+        with open(figpath_plot, "rb") as f:
+            plot_bytes = f.read()
+
+        # --- Legend PDF ---
+        with open(figpath_legend, "rb") as f:
+            legend_bytes = f.read()
+
+        # Put buttons on the same row
+        btn_col1, btn_col2 = st.columns(2)
+
+        with btn_col1:
+            st.download_button(
+                "⬇️ Download Plot PDF",
+                data=plot_bytes,
+                file_name=figpath_plot,
+                mime="application/pdf"
+            )
+
+        with btn_col2:
+            st.download_button(
+                "⬇️ Download Legend PDF",
+                data=legend_bytes,
+                file_name=figpath_legend,
+                mime="application/pdf"
+            )
+
 # -----------------------
 # SIMULATION TABLE
 # -----------------------

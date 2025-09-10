@@ -12,7 +12,7 @@ SIMULATION_CONFIG = {
     "c": 4000,  # Constant part of the c_vector
     "delta": 0.1,  # Delta parameter (could model uncertainty, slack, or safety margin)
     "epsilon": 1,  # Regularization term (to avoid division by zero, for stability)
-    "init_bid": 1,
+    "Nb_random_sim": 1,
     "tol": 1e-5,  # Tolerance threshold for considering the game as converged
     "lr_vary": False,  # Learning rate vary or not
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
