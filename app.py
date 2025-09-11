@@ -11,7 +11,7 @@ from src.game.utils import *
 from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
 from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
-from src.game.simulation_table import run_simulation, display_results_streamlit
+from src.game.simulation_table import run_simulation_table_avg, display_results_streamlit_dict
 
 # -----------------------
 # PAGE CONFIG & HEADER
@@ -192,7 +192,7 @@ with st.sidebar:
             k = st.number_input(
                 f"Number of players in first subset for Hybrid #{h + 1}",
                 min_value=1,
-                max_value=cfg["n"] - 1,
+                max_value=cfg["n"],
                 value=2,
                 step=1,
                 key=f"hybrid_k_{h}"  # ✅ unique par Hybrid
@@ -202,7 +202,7 @@ with st.sidebar:
             cfg["Nb_A1"].append(int(k))
 
             # Légende avec le k correspondant
-            LEGENDS.append(f"Hybrid (A1 :{k}, A2:{cfg["n"] - k})")
+            LEGENDS.append(f"(A1: {k}, A2: {cfg["n"] - k})")
 
             # --- Generate random sets ---
             subset = random.sample(range(cfg["n"]), int(k))
@@ -329,6 +329,7 @@ if st.button("▶️ Run Simulation"):
     # -----------------------
     # PLOTLY VISUALISATION
     # -----------------------
+
 def convert_results_to_csv(results):
     # Fonction pour convertir les résultats en CSV
     # Implémentation simplifiée
@@ -517,5 +518,8 @@ if 'results' in st.session_state:
 # -----------------------
 
 if st.button("📊 Run Simulation Table"):
-    results = run_simulation(cfg, GameKelly)
-    display_results_streamlit(results, cfg, save_path="results/table_results.csv")
+    with st.spinner("Simulating..."):
+        results = run_simulation_table_avg(cfg, GameKelly)
+        display_results_streamlit_dict(results, cfg, save_path="results/table_results.csv")
+    #st.session_state.results = results
+    #st.session_state.config = cfg

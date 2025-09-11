@@ -74,7 +74,7 @@ class SimulationRunner:
 
                     #Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
                     Hybrid_funcs = self.config["Hybrids"][idx]["Hybrid_funcs"]
-                    lrMethod2 = f"Hybrid (A1 :{self.config['Nb_A1'][idx]}, A2:{n - self.config['Nb_A1'][idx]})"
+                    lrMethod2 = f"(A1: {self.config['Nb_A1'][idx]}, A2: {n - self.config['Nb_A1'][idx]})"
                     idx += 1
 
                 game_set = GameKelly(n, price, eps, delta, alpha, tol)
