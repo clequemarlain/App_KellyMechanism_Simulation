@@ -66,7 +66,7 @@ def run_simulation_table_avg(config, GameKelly):
                     game = GameKelly(n, price, eps, delta, alpha, tol)
                     Bids, Welfare, Utility_set, error_NE_set = game.learning(
                         lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
-                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
+                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets, stop=True
                     )
 
                     min_error = torch.min(error_NE_set)
@@ -113,7 +113,7 @@ def display_results_streamlit_dict(results, config, save_path=None):
 
                 # Format ∞
                 if isinstance(metric, float) and np.isinf(metric):
-                    metric_str = "∞"
+                    metric_str = f"<{config["T"]}"#"∞"
                 else:
                     metric_str = str(metric)
                 row.append(metric_str)

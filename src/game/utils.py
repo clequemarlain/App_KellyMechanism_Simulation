@@ -9,12 +9,13 @@ import sympy as sp
 
 colors = [
     "darkorange",  # Orange foncé
+    "royalblue",  # Bleu vif
     "green",       # Vert
     # "red",       # (commenté)
     "purple",      # Violet
     "gold",        # Doré
     "teal",        # Bleu-vert
-    "royalblue",  # Bleu vif
+
     "magenta",     # Magenta
     "brown",       # Marron
     "black",       # Noir

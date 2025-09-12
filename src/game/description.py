@@ -4,7 +4,7 @@ ALGO_DESCRIPTIONS = {
     "None": "",
 
     "SBRD": """Synchronous Best-Response Dynamics (SBRD):
-    An iterative learning algorithm where all agents update their strategies simultaneously,
+An iterative learning algorithm where all agents update their strategies simultaneously,
 computing the best response at each step, typically uses analytical expressions for best responses for alpha = 0, 1, and 2
 . """,
 

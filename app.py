@@ -1,6 +1,6 @@
 import json, io
 import numpy as np
-import torch,ast, random
+import torch,ast, random,time
 import streamlit as st
 from pdf2image import convert_from_path
 from PIL import Image
@@ -12,6 +12,7 @@ from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
 from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
 from src.game.simulation_table import run_simulation_table_avg, display_results_streamlit_dict
+from simulation_param_n_gamma import *
 
 # -----------------------
 # PAGE CONFIG & HEADER
@@ -317,14 +318,33 @@ if st.checkbox("ℹ️ Show information about metrics"):
 # RUN SIMULATION
 # -----------------------
 if st.button("▶️ Run Simulation"):
+    # Conteneur pour le chrono
+    chrono_placeholder = st.empty()
+
+    start_time = time.time()
 
     with st.spinner("Simulating..."):
-        runner = SimulationRunner(cfg)
-        results = runner.run_simulation()
+        # --- Chrono en temps réel ---
+        while True:
+            elapsed_time = time.time() - start_time
+            minutes, seconds = divmod(int(elapsed_time), 60)
+       #     chrono_placeholder.info(f"⏱️ Elapsed time: {minutes:02d}:{seconds:02d}")
 
-        # Stockage des résultats dans la session
+            # Ici tu lances la simulation
+            runner = SimulationRunner(cfg)
+            results = runner.run_simulation()
+            break  # on sort de la boucle une fois la simulation finie
+
+    # --- Stop chrono ---
+    elapsed_time = time.time() - start_time
+    minutes, seconds = divmod(int(elapsed_time), 60)
+
+    # Stocker les résultats dans la session
     st.session_state.results = results
     st.session_state.config = cfg
+
+    # Affichage final
+    chrono_placeholder.success(f"✅ Simulation finished in {minutes:02d}:{seconds:02d}")
 
     # -----------------------
     # PLOTLY VISUALISATION
@@ -523,3 +543,8 @@ if st.button("📊 Run Simulation Table"):
         display_results_streamlit_dict(results, cfg, save_path="results/table_results.csv")
     #st.session_state.results = results
     #st.session_state.config = cfg
+#if st.button("▶️ Run Simulation Gamma n"):
+#    with st.spinner("Simulating..."):
+#        #runner = SimulationRunner(cfg)
+#        plot_results_multi_gamma_go(cfg, metric=cfg["metric"])
+

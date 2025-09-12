@@ -1,6 +1,7 @@
 import os
 import numpy as np
-import torch, random
+import torch, random, time
+import streamlit as st
 
 from src.game.utils import *
 #from src.gamconfig import SIMULATION_CONFIG as config
@@ -43,7 +44,7 @@ class SimulationRunner:
         dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
         d_vector = 0.7 * dmin*0
 
-        # Calculer l'optimum
+        # Compute optimum
         x_log_optimum = x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0)
         Valuation_log_opt = Valuation(x_log_optimum, a_vector, d_vector, alpha)
         SW_opt = (torch.sum(Valuation_log_opt))
@@ -57,6 +58,11 @@ class SimulationRunner:
                 'x_opt': x_log_optimum.detach().numpy()
             }
         }
+
+        # Réinitialiser les placeholders
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
 
         for i in range(self.config["Nb_random_sim"]):
             if not self.config["keep_initial_bid"]:
@@ -108,7 +114,12 @@ class SimulationRunner:
                 else:
                     for k, v in sim_result.items():
                         self.results["methods"][lrMethod2][k].append(v)
+            # Mise à jour progression
+            progress = (i + 1) / self.config["Nb_random_sim"]
+            progress_bar.progress(progress)
 
+            # Mise à jour compteur i/N
+            status_text.text(f"Simulation {i + 1}/{self.config["Nb_random_sim"]}")
         # --- After loop: compute averages ---
         for method, metrics in self.results["methods"].items():
             for k, v_list in metrics.items():
@@ -117,7 +128,6 @@ class SimulationRunner:
                 except Exception:
                     # For scalars (like convergence_iter or final_bids)
                     self.results["methods"][method][k] = np.mean(v_list)
-
         return self.results
 
 
