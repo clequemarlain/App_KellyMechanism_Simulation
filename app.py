@@ -12,7 +12,7 @@ from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
 from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
 from src.game.simulation_table import run_simulation_table_avg, display_results_streamlit_dict
-from simulation_param_n_gamma import *
+#from simulation_param_n_gamma import *
 
 # -----------------------
 # PAGE CONFIG & HEADER
