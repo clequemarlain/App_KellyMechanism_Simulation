@@ -487,8 +487,10 @@ def plotGame(
     # --- Plot curves ---
     for i in range(len(legends)):
         color = "red" if legends[i] == "Optimal" else colors[i]
+        marker = "" if legends[i] ==  "Optimal" else markers[i]
         if legends[i] in METHODS:
             color = COLORS_METHODS[legends[i]]
+            marker = MARKERS_METHODS[legends[i]]
 
 
         if linestyle == "":
@@ -499,7 +501,7 @@ def plotGame(
                 (y_data[i][mask])[::step],
                 linestyle=linestyle,
                 linewidth=linewidth,
-                marker=markers[i],
+                marker=marker,
                 markersize=markersize,
                 color=color,
                 label=f"{legends[i]}"
@@ -510,7 +512,7 @@ def plotGame(
                 (y_data[i])[::step],
                 linestyle=linestyle,
                 linewidth=linewidth,
-                marker=markers[i],
+                marker=marker,
                 markersize=markersize,
                 color=color,
                 label=f"{legends[i]}",
@@ -546,7 +548,7 @@ def plotGame(
     legend_handles = [
         Line2D([0], [0], color=("red" if legends[i] == "Optimal" else  COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]),
                markeredgecolor="black", linestyle=linestyle if linestyle != "" else "-",
-               marker=("" if legends[i] == "Optimal" else  MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ),
+               marker=("" if legends[i] == "Optimal" else MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ),
                markersize=markersize, linewidth=linewidth)
         for i in range(len(legends))
     ]

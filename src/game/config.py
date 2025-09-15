@@ -22,7 +22,7 @@ SIMULATION_CONFIG = {
     # "||BR(z) -z||"; Social Welfare, Distance To Optimal SW r"$\varphi (z)$" Label for the y-axis in the output plot (error between best response and current state)
     "ylog_scale": False,
     # Whether to use a logarithmic scale on the y-axis in the plot, recommended for speed's convergence plot
-    "plot_step": 2,
+    "plot_step": 200,
     "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD
     "pltText": True,  # Whether to display text annotations on the plot
     "gamma": 10  # Exponent controlling the heterogeneity of the a_vector
