@@ -444,7 +444,7 @@ if 'results' in st.session_state:
                 y=data[::cfg["plot_step"]],
                 mode='lines+markers',
                 name=legend,
-                line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legend] if legends[i] in METHODS else colors[i]), width=3),
+                line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
                 #marker=dict(
                 #    symbol=("" if legends[i] == "Optimal" else  MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ))  # contour noir (optionnel pour visibilité)
                 #showlegend=False  # 👈 on masque
