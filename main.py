@@ -70,20 +70,24 @@ class SimulationRunner:
 
             idx = 0
             NbHybrid = 0
+
             for  lrMethod in lrMethods:
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
-                if lrMethod == "Hybrid" and NbHybrid == 0:
-                    if self.config["Random_set"]:
-                        subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
-                        remaining = [i for i in range(self.config["n"]) if i not in subset]
+                if lrMethod == "Hybrid" :
+                    NbHybrid = NbHybrid+1
+
+                    subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
+                    remaining = [i for i in range(self.config["n"]) if i not in subset]
+                    if self.config["Random_set"] and NbHybrid == 1:
                         Hybrid_sets = [subset, remaining]
-                        NbHybrid+=1
-                    #Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
+                    else:
+                        Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
                     Hybrid_funcs = self.config["Hybrids"][idx]["Hybrid_funcs"]
                     lrMethod2 = f"(A1: {self.config['Nb_A1'][idx]}, A2: {n - self.config['Nb_A1'][idx]})"
                     idx += 1
+
 
                 game_set = GameKelly(n, price, eps, delta, alpha, tol)
                 Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
