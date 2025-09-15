@@ -453,7 +453,7 @@ if 'results' in st.session_state:
 
     # Configuration du graphique
     y_label_map = {
-        "Speed": "||BR(z) - z||$",
+        "Speed": "Residual",
         "LSW": "LSW",#"Liquid Social Welfare",
         "SW": "SW", #Social Welfare",
         "Bid": "Bid of  player",
