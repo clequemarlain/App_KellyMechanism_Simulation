@@ -137,7 +137,7 @@ with st.sidebar:
             st.error("Invalid format for list_gamma, please enter numbers separated by commas.")
 
     # --- Learning methods selection ---
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAE", "XL", "Hybrid"]
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "Fict_SBRD", "NumSBRD", "DAE", "XL", "Hybrid"]
 
     selected_methods = st.multiselect(
         "Select learning methods",
@@ -150,6 +150,7 @@ with st.sidebar:
     # --- Hybrids configuration ---
     cfg["Hybrids"] = []  # will store multiple hybrid configs
     LEGENDS = [m for m in selected_methods if m != "Hybrid"]
+    LEGENDS_Hybrid = []
 
     if "Hybrid" in selected_methods:
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
@@ -193,7 +194,7 @@ with st.sidebar:
             k = st.number_input(
                 f"Number of players in first subset for Hybrid #{h + 1}",
                 min_value=1,
-                max_value=cfg["n"],
+                max_value=cfg["n"]-1,
                 value=2,
                 step=1,
                 key=f"hybrid_k_{h}"  # ✅ unique par Hybrid
@@ -203,7 +204,7 @@ with st.sidebar:
             cfg["Nb_A1"].append(int(k))
 
             # Légende avec le k correspondant
-            LEGENDS.append(f"(A1: {k}, A2: {cfg["n"] - k})")
+            LEGENDS_Hybrid.append(f"(A1: {k}, A2: {cfg["n"] - k})")
 
             # --- Generate random sets ---
             subset = random.sample(range(cfg["n"]), int(k))
@@ -229,7 +230,7 @@ with st.sidebar:
                 "Hybrid_funcs": funcs,
                 "Hybrid_sets": sets
             })
-
+    LEGENDS = LEGENDS_Hybrid + LEGENDS
     metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
@@ -437,21 +438,23 @@ if 'results' in st.session_state:
                 y=data[::cfg["plot_step"]],
                 mode='lines+markers',
                 name=legend,
-                line=dict(color=colors[i % len(colors)], width=3),
+                line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legend] if legends[i] in METHODS else colors[i]), width=3),
+                #marker=dict(
+                #    symbol=("" if legends[i] == "Optimal" else  MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ))  # contour noir (optionnel pour visibilité)
                 #showlegend=False  # 👈 on masque
             ))
 
 
     # Configuration du graphique
     y_label_map = {
-        "Speed": "Convergence error",
-        "LSW": "Liquid Social Welfare",
-        "SW": "Social Welfare",
+        "Speed": "||BR(z) - z||$",
+        "LSW": "LSW",#"Liquid Social Welfare",
+        "SW": "SW", #Social Welfare",
         "Bid": "Bid of  player",
         "Agg_Bid": "Aggregate Bid of player",
         "Utility": "Player utility",
         "Agg_Utility": "Player Aggregate Utility",
-        "Dist_To_Optimum_SW": "Distance to the Optimal SW"
+        "Dist_To_Optimum_SW": "Dist2SW*"#Distance to the Optimal SW"
     }
     config["y_label"] = y_label_map[cfg["metric"]]
     fig.update_layout(
@@ -467,12 +470,14 @@ if 'results' in st.session_state:
     if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
         save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+                                                     fontsize=40, markersize=20, linewidth=12,linestyle="-",
                                  ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
     else:
 
         save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-                       ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+        figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
+                                                saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
+                                                ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
     fig.update_layout(
         title=f"Evolution of {y_label_map[cfg['metric']]}",

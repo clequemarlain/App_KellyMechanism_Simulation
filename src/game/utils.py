@@ -8,14 +8,9 @@ from scipy.optimize import root_scalar
 import sympy as sp
 
 colors = [
-    "darkorange",  # Orange foncé
-    "royalblue",  # Bleu vif
-    "green",       # Vert
-    # "red",       # (commenté)
-    "purple",      # Violet
+
     "gold",        # Doré
     "teal",        # Bleu-vert
-
     "magenta",     # Magenta
     "brown",       # Marron
     "black",       # Noir
@@ -31,8 +26,24 @@ colors = [
     "slategray",   # Gris ardoise
     "darkkhaki"    # Kaki clair
 ]
+METHODS = ["DAQ", "DAE", "OGD", "SBRD"]
+COLORS_METHODS = {
+   "DAQ"  : "darkorange",  # Orange foncé
+   "DAE"  : "royalblue",  # Bleu vif
+   "OGD"  : "green",  # Vert
+   "SBRD" : "purple",  # Violet
+}
 
-markers = ["s", "^", "v", "D", "*", "p", "x", "+", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+MARKERS_METHODS = {
+    "DAQ": "s",  # Orange foncé
+    "DAE": "^",  # Bleu vif
+    "OGD": "v",  # Vert
+    "SBRD": "D", # Violet
+}
+
+
+
+markers = [ "*", "p", "x", "+", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 
 
 def solve_nonlinear_eq(a, s, alpha, eps, c_vector, price=1.0, max_iter=100, tol=1e-5):
@@ -359,6 +370,43 @@ class GameKelly:
 
         return z_t, acc_grad
 
+    def Fict_SBRD(
+            self,
+            t,
+            a_vector,
+            c_vector,
+            d_vector,
+            eta,
+            bids,
+            acc_grad,
+            p=0,
+            vary=False,
+            Hybrid_funcs=None, Hybrid_sets=None):
+        """
+        Synchronous Fictitious Play Best-Response Dynamics (Fict_SBRD).
+
+        Each player best-responds to the empirical average of opponents' past bids
+        rather than only the current bids.
+        """
+        # Best response to the averaged bids
+        z_t = BR_alpha_fair(self.epsilon, c_vector, bids, p,
+                                         a_vector, self.delta, self.alpha, self.price, b=0)
+        # Empirical average of past bids (up to iteration t)
+
+        if vary:
+            avg_bids = eta/t * acc_grad  # acc_grad stores cumulative bids
+        else:
+            avg_bids = eta * acc_grad
+
+
+
+        # Update cumulative history for averaging
+        acc_grad = z_t + avg_bids
+
+        z_t = Q1(acc_grad, self.epsilon, c_vector, self.price)
+
+        return z_t, acc_grad
+
     def NumSBRD(self,t, a_vector, c_vector, d_vector,  eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
         #p = torch.sum(bids) - bids + self.delta
         z_t = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon,  c_vector, self.price, max_iter=100,tol=self.tol)
@@ -439,6 +487,9 @@ def plotGame(
     # --- Plot curves ---
     for i in range(len(legends)):
         color = "red" if legends[i] == "Optimal" else colors[i]
+        if legends[i] in METHODS:
+            color = COLORS_METHODS[legends[i]]
+
 
         if linestyle == "":
             mask = y_data[i] > 0
@@ -462,7 +513,8 @@ def plotGame(
                 marker=markers[i],
                 markersize=markersize,
                 color=color,
-                label=f"{legends[i]}"
+                label=f"{legends[i]}",
+                markeredgecolor="black",
             )
 
         if pltText:
@@ -492,7 +544,10 @@ def plotGame(
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else colors[i]), linestyle=linestyle if linestyle != "" else "-", marker=(markers[i] if legends[i] != "Optimal" else ""), markersize=markersize, linewidth=linewidth)
+        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else  COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]),
+               markeredgecolor="black", linestyle=linestyle if linestyle != "" else "-",
+               marker=("" if legends[i] == "Optimal" else  MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ),
+               markersize=markersize, linewidth=linewidth)
         for i in range(len(legends))
     ]
 
@@ -547,6 +602,7 @@ def plotGame_dim_N(
                 marker=markers[j],
                 markersize=markersize,
                 color=color,
+                markeredgecolor="black",
             )
 
         if pltText:
@@ -576,7 +632,7 @@ def plotGame_dim_N(
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=colors[i], marker=markers[i], markersize=markersize, linestyle=linestyles[i], linewidth=linewidth)
+        Line2D([0], [0], color=colors[i], marker=markers[i], markersize=markersize, markeredgecolor="black", linestyle=linestyles[i], linewidth=linewidth)
         for i in range(len(legends))
     ]
 

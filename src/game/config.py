@@ -18,7 +18,7 @@ SIMULATION_CONFIG = {
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
     "x_label": "Time step (t)",  # Label for the x-axis in the output plot
     "metric": "SW",  # "speed" or "lpoa",or "lsw" , "bid", "utility", "Dist-2-Opt-SW"
-    "y_label": "Social Welfare",
+    "y_label": "SW",
     # "||BR(z) -z||"; Social Welfare, Distance To Optimal SW r"$\varphi (z)$" Label for the y-axis in the output plot (error between best response and current state)
     "ylog_scale": False,
     # Whether to use a logarithmic scale on the y-axis in the plot, recommended for speed's convergence plot
