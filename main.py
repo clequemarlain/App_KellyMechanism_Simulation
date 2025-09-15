@@ -69,15 +69,17 @@ class SimulationRunner:
                 bid0 = (c - epsilon) * torch.rand(n) + a
 
             idx = 0
-            for lrMethod in lrMethods:
+            NbHybrid = 0
+            for  lrMethod in lrMethods:
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
-                if lrMethod == "Hybrid":
-                    subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
-                    remaining = [i for i in range(self.config["n"]) if i not in subset]
-                    Hybrid_sets = [subset, remaining]
-
+                if lrMethod == "Hybrid" and NbHybrid == 0:
+                    if self.config["Random_set"]:
+                        subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
+                        remaining = [i for i in range(self.config["n"]) if i not in subset]
+                        Hybrid_sets = [subset, remaining]
+                        NbHybrid+=1
                     #Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
                     Hybrid_funcs = self.config["Hybrids"][idx]["Hybrid_funcs"]
                     lrMethod2 = f"(A1: {self.config['Nb_A1'][idx]}, A2: {n - self.config['Nb_A1'][idx]})"

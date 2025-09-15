@@ -71,7 +71,7 @@ with st.sidebar:
 
     cfg["n"] = st.number_input("Players (n)", 2, 100, cfg["n"], step=1)
     cfg["T"] = st.number_input("Iterations (T)", 10, 10000, cfg["T"], step=10) #st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
-    cfg["Nb_random_sim"] = st.number_input("Number of random simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
+    cfg["Nb_random_sim"] = st.number_input("Number of simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
     cfg["lr_vary"] = st.checkbox(
@@ -153,6 +153,12 @@ with st.sidebar:
     LEGENDS_Hybrid = []
 
     if "Hybrid" in selected_methods:
+
+        cfg["Random_set"] = st.checkbox(
+            "Random players' sets?",
+            value=True,  # default = cfg["lr_vary"]
+            help="Check this box to enable hybrid sets variation."
+        )
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
 
         # Number of hybrids
