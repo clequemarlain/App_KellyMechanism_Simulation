@@ -105,11 +105,12 @@ def display_results_streamlit_dict(results, config, save_path=None):
             row = [gamma, n]
             for method in lrMethods:
                 # Handle hybrid method labels if present
-                method_keys = [k for k in results[gamma][n].keys() if method in k] if method == "Hybrid" else [method]
-                if method_keys:
-                    metric = np.mean([results[gamma][n][k] for k in method_keys])
-                else:
-                    metric = "---"
+                #method_keys = [k for k in results[gamma][n].keys() if method in k] if method == "Hybrid" else [method]
+                metric = results[gamma][n][method]
+                #if method_keys:
+                #    metric = np.mean([results[gamma][n][k] for k in method_keys])
+                #else:
+                #    metric = "---"
 
                 # Format ∞
                 if isinstance(metric, float) and np.isinf(metric):
