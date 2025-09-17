@@ -1,10 +1,11 @@
 import os
 import numpy as np
+
 import torch, random, time
 import streamlit as st
 
 from src.game.utils import *
-#from src.gamconfig import SIMULATION_CONFIG as config
+from src.game.config import SIMULATION_CONFIG as cfg
 
 class SimulationRunner:
     def __init__(self, config):
@@ -109,6 +110,7 @@ class SimulationRunner:
                     'Agg_Bid': Bids[1].detach().numpy(),
                     'Utility': Utility_set[0].detach().numpy(),
                     'Agg_Utility': Utility_set[1].detach().numpy(),
+                    'Res_Utility': Utility_set[2].detach().numpy(),
                     'final_bids': Bids[0][-1].detach().numpy(),
                     'convergence_iter': torch.argmin(error_NE_set).item() if torch.min(error_NE_set) <= tol else T
                 }
@@ -136,4 +138,56 @@ class SimulationRunner:
                     self.results["methods"][method][k] = np.mean(v_list)
         return self.results
 
+
+if  __name__ == "__main__":
+    runner = SimulationRunner(cfg)
+    results = runner.run_simulation()
+
+    # Préparation des données pour les graphiques
+    x_data = np.arange(cfg['T'])
+    y_data = []
+    legends = []
+    LEGENDS = cfg["lrMethods"]
+    for method in LEGENDS:
+
+        # if method == "Hybrid":
+        if method in results['methods']:
+            if cfg["metric"] == "Speed":
+                y_data.append(results['methods'][method]['Speed'])
+            elif cfg["metric"] == "LSW":
+                y_data.append(results['methods'][method]['LSW'])
+            elif cfg["metric"] == "Dist_To_Optimum_SW":
+                y_data.append(results['methods'][method]['Dist_To_Optimum_SW'])
+            elif cfg["metric"] == "SW":
+                y_data.append(results['methods'][method]['SW'])
+            elif cfg["metric"] == "Bid":
+                y_data.append(results['methods'][method]['Bid'])
+            elif cfg["metric"] == "Agg_Bid":
+                y_data.append(results['methods'][method]['Agg_Bid'])
+            elif cfg["metric"] == "Utility":
+                y_data.append(results['methods'][method]['Utility'])
+            elif cfg["metric"] == "Agg_Utility":
+                y_data.append(results['methods'][method]['Agg_Utility'])
+            legends.append(method)
+
+    # Ajout de la valeur optimale si applicable
+    if cfg["metric"] in ["LSW", "SW"]:
+        if cfg["metric"] == "SW":
+            y_data.append(np.full_like(y_data[0], results['optimal']['SW']))
+
+        else:
+            y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
+        LEGENDS.append("Optimal")
+
+    if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
+        save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
+        figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+                                                     fontsize=40, markersize=20, linewidth=12,linestyle="-",
+                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+    else:
+
+        save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
+        figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
+                                                saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
+                                                ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 

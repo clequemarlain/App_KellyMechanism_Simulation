@@ -13,11 +13,12 @@ SIMULATION_CONFIG = {
     "delta": 0.1,  # Delta parameter (could model uncertainty, slack, or safety margin)
     "epsilon": 1,  # Regularization term (to avoid division by zero, for stability)
     "Nb_random_sim": 1,
+    "Players2See": [1],
     "tol": 1e-5,  # Tolerance threshold for considering the game as converged
     "lr_vary": False,  # Learning rate vary or not
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
     "x_label": "Time step (t)",  # Label for the x-axis in the output plot
-    "metric": "SW",  # "speed" or "lpoa",or "lsw" , "bid", "utility", "Dist-2-Opt-SW"
+    "metric": "SW",  # "Speed" or "lpoa",or "LSW" , "Bid", "utility", "Dist-2-Opt-SW"
     "y_label": "SW",
     # "||BR(z) -z||"; Social Welfare, Distance To Optimal SW r"$\varphi (z)$" Label for the y-axis in the output plot (error between best response and current state)
     "ylog_scale": False,

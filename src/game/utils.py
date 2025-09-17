@@ -168,7 +168,10 @@ def BR_alpha_fair(eps, c_vector, z: torch.Tensor, p,
 
 def Valuation(x, a_vector, d_vector, alpha):
     V = V_func(x, alpha)
-    return a_vector * V
+    return a_vector * V + d_vector
+def Payoff(x, z, a_vector, d_vector, alpha, price):
+    U = Valuation(x, a_vector, d_vector, alpha) - price*z
+    return U
 
 def SW_func(x, budgets, a_vector, d_vector, alpha):
     V = a_vector * V_func(x, alpha)
@@ -269,28 +272,7 @@ class GameKelly:
                                                                     d_vector[Hybrid_sets[idx_set]], eta, bids[Hybrid_sets[idx_set]], acc_grad[Hybrid_sets[idx_set]],p=p_, vary=vary)
         return z_t, acc_grad_copy
 
-    def AsynXL(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False):
-        def phi(z):
-            x = self.fraction_resource(z)
-            V = V_func(x, self.alpha)
-            return a_vector * V - self.price * z + d_vector
 
-        acc_grad_copy = acc_grad.clone()
-        grad_t = self.grad_phi(phi, bids)
-
-
-        z_t = bids.clone()
-        n = bids.shape[0]
-
-        for i in range(n):
-            grad_t = self.grad_phi(phi, z_t)
-            if vary:
-                acc_grad_copy[i] += grad_t[i] / (t ** eta)
-            else:
-                acc_grad_copy[i] += grad_t[i] * eta
-
-            z_t[i] = torch.maximum(self.epsilon / self.price, c_vector[i] / (1 + torch.exp(-acc_grad_copy[i])))
-        return z_t, acc_grad_copy
 
     def OGD(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
@@ -342,26 +324,6 @@ class GameKelly:
         z_t = Q2(acc_grad_copy, self.epsilon, c_vector, self.price)
 
         return z_t, acc_grad_copy
-    def AsynDAQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
-        def phi(z):
-            x = self.fraction_resource(z)
-            V = V_func(x, self.alpha)
-            return a_vector * V - self.price * z + d_vector
-
-        acc_grad_copy = acc_grad.clone()
-
-        z_t = bids.clone()
-
-        n = bids.shape[0]
-        for i in range(n):
-            grad_t = self.grad_phi(phi, z_t)
-            if vary:
-                acc_grad_copy[i] += grad_t[i] / (t ** eta)
-            else:
-                acc_grad_copy[i] += grad_t[i] * eta
-
-            z_t[i] = Q1(acc_grad_copy[i], self.epsilon, c_vector, self.price)
-        return z_t, acc_grad_copy
 
     def SBRD(self, t, a_vector, c_vector, d_vector,  eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
         #p = torch.sum(bids) - bids + self.delta
@@ -370,17 +332,7 @@ class GameKelly:
 
         return z_t, acc_grad
 
-    def Fict_SBRD(
-            self,
-            t,
-            a_vector,
-            c_vector,
-            d_vector,
-            eta,
-            bids,
-            acc_grad,
-            p=0,
-            vary=False,
+    def Fict_SBRD(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False,
             Hybrid_funcs=None, Hybrid_sets=None):
         """
         Synchronous Fictitious Play Best-Response Dynamics (Fict_SBRD).
@@ -398,11 +350,8 @@ class GameKelly:
         else:
             avg_bids = eta * acc_grad
 
-
-
         # Update cumulative history for averaging
         acc_grad = z_t + avg_bids
-
         z_t = Q1(acc_grad, self.epsilon, c_vector, self.price)
 
         return z_t, acc_grad
@@ -414,21 +363,9 @@ class GameKelly:
         z_t = Q1(z_t, self.epsilon, c_vector, self.price)
         return z_t, acc_grad
 
-    def AsynBRD(self, a_vector, c_vector, d_vector, t,  eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
-        n = bids.shape[0]
-        z_t = bids.clone()
-        for i in range(n):
-            p = torch.sum(z_t) - z_t[i] + self.delta
-
-
-            z_t[i] = BR_alpha_fair(self.epsilon, c_vector[i], z_t[i], p,
-                                         a_vector[i], self.delta, self.alpha, self.price, b=0)
-
-            z_t[i] = Q1(z_t[i], self.epsilon, c_vector[i], self.price)
-        return z_t, acc_grad
-
     def learning(self, func, a_vector, c_vector, d_vector, n_iter: int, eta, bids, vary: bool = False, stop=False, Hybrid_funcs=None, Hybrid_sets=None):
         func = getattr(self, func)
+
 
         acc_grad = torch.zeros(self.n, dtype=torch.float64)
         matrix_bids = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
@@ -436,15 +373,20 @@ class GameKelly:
         vec_LSW = torch.zeros(n_iter + 1, dtype=torch.float64)
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
+        utiliy_residual = utiliy.clone()
         agg_utility = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         error_NE = torch.zeros(n_iter + 1, dtype=torch.float64)
         matrix_bids[0] = bids.clone()
         agg_bids[0] = bids.clone()
         error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
-        utiliy[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
-        agg_utility[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)-  self.price * matrix_bids[0] + d_vector
+        utiliy[0] = Payoff(self.fraction_resource(matrix_bids[0]), matrix_bids[0], a_vector, d_vector, self.alpha, self.price)
+        agg_utility[0] = utiliy[0].clone()
         vec_LSW[0] = LSW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
         vec_SW[0] = SW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
+
+        z_br = BR_alpha_fair(self.epsilon, c_vector, matrix_bids[0], torch.sum(matrix_bids[0]) - matrix_bids[0] + self.delta, a_vector, self.delta, self.alpha, self.price,
+                             b=0)
+        utiliy_residual[0] = torch.abs(utiliy[0] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
 
 
         k = 0
@@ -456,8 +398,12 @@ class GameKelly:
             matrix_bids[t], acc_grad = func(t, a_vector, c_vector, d_vector, eta, matrix_bids[t-1], acc_grad, p=p, vary=vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets)
             error_NE[t] = self.check_NE(matrix_bids[t], a_vector, c_vector, d_vector,)
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
+
+            z_br = BR_alpha_fair(self.epsilon, c_vector, matrix_bids[t], p, a_vector, self.delta, self.alpha, self.price, b=0)
+
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
-            utiliy[t] = Valuation(self.fraction_resource(matrix_bids[t]), a_vector, d_vector, self.alpha) -  self.price * matrix_bids[t] + d_vector
+            utiliy[t] = Payoff(self.fraction_resource(matrix_bids[t]), matrix_bids[t], a_vector, d_vector, self.alpha, self.price)
+            utiliy_residual[t] = torch.abs(utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
             agg_utility[t] = 1/(t+1) * torch.sum(utiliy[:t], dim=0)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
@@ -465,7 +411,7 @@ class GameKelly:
                 break
         Bids = [matrix_bids[:k, :], agg_bids[:k, :]]
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
-        Utility_set = [utiliy[:k, :], agg_utility[:k, :]]
+        Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :]]
         Welfare = [vec_SW[:k], vec_LSW[:k]]
         return Bids, Welfare, Utility_set, error_NE[:k]  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
 
@@ -578,7 +524,7 @@ def plotGame(
 
 def plotGame_dim_N(
     x_data, y_data, x_label, y_label, legends, saveFileName,
-    ylog_scale, fontsize=40, markersize=25, linewidth=12, linestyle="-",
+    ylog_scale, Players2See=[1,2], fontsize=40, markersize=25, linewidth=12, linestyle="-",
     pltText=False, step=1
 ):
     plt.figure(figsize=(18, 12))
@@ -592,10 +538,23 @@ def plotGame_dim_N(
         plt.yscale("log")
 
     # --- Plot curves ---
+    legend_handles = []
+    legends2 = []
     for i in range(len(legends)):
-        color = colors[i]
+        color = (
+            "red" if legends[i] == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else
+            colors[
+                i])
         n = y_data[i].shape[1]
-        for j in range(n):
+
+        for j in Players2See:
+            legends2.append(f"{legends[i]} -- Player {j+1}")
+            # --- Build legend handles ---
+            legend_handles.append(
+                Line2D([0], [0], color=color
+                       , marker=markers[j], markersize=markersize, markeredgecolor="black", linestyle=linestyle,
+                       linewidth=linewidth)
+        )
             plt.plot(
                 x_data[::step],
                 (y_data[i])[:, j][::step],
@@ -632,11 +591,7 @@ def plotGame_dim_N(
     figpath_plot = f"{saveFileName}_plot.pdf"
     plt.savefig(figpath_plot, format="pdf")
 
-    # --- Build legend handles ---
-    legend_handles = [
-        Line2D([0], [0], color=colors[i], marker=markers[i], markersize=markersize, markeredgecolor="black", linestyle=linestyles[i], linewidth=linewidth)
-        for i in range(len(legends))
-    ]
+
 
     # --- Save legend separately ---
     fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
@@ -645,12 +600,12 @@ def plotGame_dim_N(
 
     ax.legend(
         legend_handles,
-        legends,
+        legends2,
         frameon=True,
         facecolor="white",
         edgecolor="black",
         prop={"weight": "bold", "size": fontsize},
-        ncol=len(legends),  # ✅ all items on one line
+        ncol=len(legends2),  # ✅ all items on one line
         loc="center",  # ✅ centered in the figure
         bbox_to_anchor=(0.5, 0.5)
     )

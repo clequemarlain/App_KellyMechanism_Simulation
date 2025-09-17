@@ -35,7 +35,7 @@ def run_simulation_table_avg(config, GameKelly):
 
     results = {}  # dict to store results
 
-    for gamma in list_gamma:
+    for sim_gamma, gamma in enumerate(list_gamma):
         results[gamma] = {}
         for n in list_n:
             results[gamma][n] = {}
@@ -79,6 +79,12 @@ def run_simulation_table_avg(config, GameKelly):
                     if any(i != float('inf') for i in iterations_list) else float('inf')
 
                 results[gamma][n][lrMethod2] = avg_iterations
+        # Mise à jour progression
+        progress = (sim_gamma + 1) /len(list_gamma)
+        progress_bar.progress(progress)
+
+        # Mise à jour compteur i/N
+        status_text.text(f"Simulation {sim_gamma + 1}/{list_gamma}")
 
     return results
 

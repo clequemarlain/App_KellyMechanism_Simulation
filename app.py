@@ -70,7 +70,7 @@ with st.sidebar:
     cfg = dict(DEFAULT_CONFIG)
 
     cfg["n"] = st.number_input("Players (n)", 2, 100, cfg["n"], step=1)
-    cfg["T"] = st.number_input("Iterations (T)", 10, 10000, cfg["T"], step=10) #st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
+    cfg["T"] = st.number_input("Iterations (T)", 10, 100000, cfg["T"], step=10) #st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
     cfg["Nb_random_sim"] = st.number_input("Number of simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
@@ -95,7 +95,7 @@ with st.sidebar:
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 1.0, 1.0*1e2, float(cfg["epsilon"]), step=0.5, format="%.6f")
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
-        cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, 100.0, float(cfg["gamma"]), step=0.1)
+        cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, cfg["a"], float(cfg["gamma"]), step=0.1)
 
         cfg["a_vector"] = st.text_area(
             "List of heterogeneous values a_i",
@@ -199,9 +199,9 @@ with st.sidebar:
             # --- Select k ---
             k = st.number_input(
                 f"Number of players in first subset for Hybrid #{h + 1}",
-                min_value=1,
+                min_value=0,
                 max_value=cfg["n"]-1,
-                value=2,
+                value=1,
                 step=1,
                 key=f"hybrid_k_{h}"  # ✅ unique par Hybrid
             )
@@ -213,7 +213,10 @@ with st.sidebar:
             LEGENDS_Hybrid.append(f"(A1: {k}, A2: {cfg["n"] - k})")
 
             # --- Generate random sets ---
-            subset = random.sample(range(cfg["n"]), int(k))
+            if cfg["Random_set"]:
+                subset = random.sample(range(cfg["n"]), int(k))
+            else:
+                subset = list(range(0, k))
             remaining = [i for i in range(cfg["n"]) if i not in subset]
             cfg["Hybrid_sets"] = [subset, remaining]
 
@@ -237,8 +240,20 @@ with st.sidebar:
                 "Hybrid_sets": sets
             })
     LEGENDS = LEGENDS_Hybrid + LEGENDS
-    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility"]
+    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility", "Res_Utility"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
+
+    if cfg["metric"] in ["Utility", "Agg_Utility", "Bid", "Agg_Bid"]:
+        cfg["Players2See"] =  st.text_area(
+            "List of players to display metrics",
+            value=", ".join(str(x) for x in cfg.get("Players2See", DEFAULT_CONFIG["Players2See"])),
+            help="Comma-separated list of γ (a_i heterogeneity) values."
+        )
+        # Convert input string to list of floats
+        try:
+            cfg["Players2See"] = [int(x.strip()) for x in cfg["Players2See"].split(",") if x.strip()]
+        except:
+            st.error("Invalid format for Players to See, please enter numbers separated by commas.")
 
     cfg["ylog_scale"] = st.sidebar.checkbox("Y log scale", value=cfg["ylog_scale"])
     cfg["plot_step"] = st.number_input("Plot step", 1, 1000, int(cfg["plot_step"]), step=1)
@@ -324,8 +339,19 @@ if st.checkbox("ℹ️ Show information about metrics"):
 # -----------------------
 # RUN SIMULATION
 # -----------------------
+with st.expander("Why run this?"):
+    st.write("Running the simulation computes the equilibrium for each learning method...")
+
 if st.button("▶️ Run Simulation"):
     # Conteneur pour le chrono
+    st.write("""
+        This section runs the simulation:
+        1. Initialize bids for all selected learning methods  
+        2. Evaluate the chosen performance metric  
+        3. Repeat steps (1–2) for the specified number of simulations  
+        4. Compute the average metric values across all runs  
+        """)
+
     chrono_placeholder = st.empty()
 
     start_time = time.time()
@@ -364,185 +390,176 @@ def convert_results_to_csv(results):
 
 
 # Affichage des résultats si disponibles
-if 'results' in st.session_state:
-    results = st.session_state.results
-    config = st.session_state.config
+try:
+    if 'results' in st.session_state:
+        results = st.session_state.results
+        config = st.session_state.config
 
-    st.header("Simulation Results")
+        st.header("Simulation Results")
 
-    # Métriques de performance
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Number of players", config['n'])
-    with col2:
-        st.metric("Iterations", config['T'])
-    with col3:
-        st.metric("Parameter  alpha", config['alpha'])
+        # Métriques de performance
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Number of players", config['n'])
+        with col2:
+            st.metric("Iterations", config['T'])
+        with col3:
+            st.metric("Parameter  alpha", config['alpha'])
 
-    # Préparation des données pour les graphiques
-    x_data = np.arange(config['T'])
-    y_data = []
-    legends = []
-    for method in LEGENDS:
+        # Préparation des données pour les graphiques
+        x_data = np.arange(config['T'])
+        y_data = []
+        legends = []
+        for method in LEGENDS:
 
-        #if method == "Hybrid":
-        if method in results['methods']:
-            if cfg["metric"] == "Speed":
-                y_data.append(results['methods'][method]['Speed'])
-            elif cfg["metric"] == "LSW":
-                y_data.append(results['methods'][method]['LSW'])
-            elif cfg["metric"] == "Dist_To_Optimum_SW":
-                y_data.append(results['methods'][method]['Dist_To_Optimum_SW'])
-            elif cfg["metric"] == "SW":
-                y_data.append(results['methods'][method]['SW'])
-                print("ffdghjhdf", LEGENDS, len(y_data), method)
-            elif cfg["metric"] == "Bid":
-                y_data.append(results['methods'][method]['Bid'])
-            elif cfg["metric"] == "Agg_Bid":
-                y_data.append(results['methods'][method]['Agg_Bid'])
-            elif cfg["metric"] == "Utility":
-                y_data.append(results['methods'][method]['Utility'])
-            elif cfg["metric"] == "Agg_Utility":
-                y_data.append(results['methods'][method]['Agg_Utility'])
-            legends.append(method)
+            #if method == "Hybrid":
+            if method in results['methods']:
+                #if cfg["metric"] == "Speed":
+                y_data.append(results['methods'][method][cfg["metric"]])
 
-    # Ajout de la valeur optimale si applicable
-    if cfg["metric"] in ["LSW", "SW"]:
-        if cfg["metric"] == "SW":
-            y_data.append(np.full_like(y_data[0], results['optimal']['SW']))
+                legends.append(method)
 
-        else:
-            y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
-        LEGENDS.append("Optimal")
+        # Ajout de la valeur optimale si applicable
+        if cfg["metric"] in ["LSW", "SW"]:
+            if cfg["metric"] == "SW":
+                y_data.append(np.full_like(y_data[0], results['optimal']['SW']))
 
-#    legends = LEGENDS
-    # Création du graphique avec Plotly
-    fig = go.Figure()
-    markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
-    h_idx = 1
-    for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
-        if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
-            # Pour les graphiques multidimensionnels
-            for j in range(data.shape[1]):
+            else:
+                y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
+            LEGENDS.append("Optimal")
+
+    #    legends = LEGENDS
+        # Création du graphique avec Plotly
+        fig = go.Figure()
+        markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
+        h_idx = 1
+        for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
+            if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
+                # Pour les graphiques multidimensionnels
+                for j in range(data.shape[1]):
+                    fig.add_trace(go.Scatter(
+                        x=x_data[::cfg["plot_step"]],
+                        y=data[:, j][::cfg["plot_step"]],
+                        mode="lines+markers",  # ✅ ligne + marqueur
+                        name=f"{legend} -- Player {j + 1}",
+                        line=dict(color=colors[i % len(colors)], width=3),  # couleur de ligne
+                        marker=dict(
+                            symbol=markers2[j % len(markers2)],  # type de marqueur
+                            size=10,  # ✅ taille fixe (indépendante de plot_step)
+                            line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
+                        ),
+                        opacity=0.8
+                    ))
+
+
+            else:
                 fig.add_trace(go.Scatter(
                     x=x_data[::cfg["plot_step"]],
-                    y=data[:, j][::cfg["plot_step"]],
-                    mode="lines+markers",  # ✅ ligne + marqueur
-                    name=f"{legend} -- Joueur {j + 1}",
-                    line=dict(color=colors[i % len(colors)], width=3),  # couleur de ligne
-                    marker=dict(
-                        symbol=markers2[j % len(markers2)],  # type de marqueur
-                        size=10,  # ✅ taille fixe (indépendante de plot_step)
-                        line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
-                    ),
-                    opacity=0.8
+                    y=data[::cfg["plot_step"]],
+                    mode='lines+markers',
+                    name=legend,
+                    line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
                 ))
 
+
+        # Configuration du graphique
+        y_label_map = {
+            "Speed": "Residual",
+            "LSW": "LSW",#"Liquid Social Welfare",
+            "SW": "SW", #Social Welfare",
+            "Bid": "Bid of  player",
+            "Agg_Bid": "Aggregate Bid of player",
+            "Utility": "Player utility",
+            "Agg_Utility": "Player Aggregate Utility",
+            "Res_Utility": "Player Utility Residual",
+            "Dist_To_Optimum_SW": "Dist2SW*"#Distance to the Optimal SW"
+        }
+        config["y_label"] = y_label_map[cfg["metric"]]
+        fig.update_layout(
+            title=f"Evolution of {y_label_map[cfg["metric"]]}",
+            xaxis_title="Iterations",
+            yaxis_title=y_label_map[cfg["metric"]],
+            hovermode="x unified",
+            height=600,
+            template="plotly_white"
+        )
+
+        #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
+        if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
+            save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
+            figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+                                                         fontsize=40, markersize=20, linewidth=12,linestyle="-",
+                                                         Players2See=cfg["Players2See"],
+                                     ylog_scale=cfg["ylog_scale"], pltText=False, step=cfg["plot_step"])
         else:
-            fig.add_trace(go.Scatter(
-                x=x_data[::cfg["plot_step"]],
-                y=data[::cfg["plot_step"]],
-                mode='lines+markers',
-                name=legend,
-                line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
-                #marker=dict(
-                #    symbol=("" if legends[i] == "Optimal" else  MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ))  # contour noir (optionnel pour visibilité)
-                #showlegend=False  # 👈 on masque
-            ))
 
+            save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
+            figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
+                                                    saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
+                                                    ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
-    # Configuration du graphique
-    y_label_map = {
-        "Speed": "Residual",
-        "LSW": "LSW",#"Liquid Social Welfare",
-        "SW": "SW", #Social Welfare",
-        "Bid": "Bid of  player",
-        "Agg_Bid": "Aggregate Bid of player",
-        "Utility": "Player utility",
-        "Agg_Utility": "Player Aggregate Utility",
-        "Dist_To_Optimum_SW": "Dist2SW*"#Distance to the Optimal SW"
-    }
-    config["y_label"] = y_label_map[cfg["metric"]]
-    fig.update_layout(
-        title=f"Evolution of {y_label_map[cfg["metric"]]}",
-        xaxis_title="Iterations",
-        yaxis_title=y_label_map[cfg["metric"]],
-        hovermode="x unified",
-        height=600,
-        template="plotly_white"
-    )
+        fig.update_layout(
+            title=f"Evolution of {y_label_map[cfg['metric']]}",
+            xaxis_title="Iterations",
+            yaxis_title=y_label_map[cfg['metric']],
+            template="plotly_white",
+            hovermode="x unified"
+        )
+        if cfg["ylog_scale"]:
+            fig.update_yaxes(type="log")
+        st.plotly_chart(fig, use_container_width=True)
+        # Affichage des valeurs finales
+        st.subheader("Final values")
+        cols = st.columns(len(cfg["lrMethods"]) + 1)
 
-    #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
-    if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility"]:
-        save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-                                                     fontsize=40, markersize=20, linewidth=12,linestyle="-",
-                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
-    else:
+        for i, method in enumerate(cfg["lrMethods"]):
+            if method in results['methods']:
+                with cols[i]:
+                    st.metric(
+                        label=method,
+                        value=f"{results['methods'][method]['convergence_iter']} itérations",
+                        help=f"Last error: {results['methods'][method]['Speed'][-1]:.6f}"
+                    )
 
-        save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
-                                                saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
-                                                ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+        with cols[-1]:
+            st.metric(
+                label="Optimal",
+                value=f"LSW: {results['optimal']['LSW']:.2f}",
+                help=f"SW: {results['optimal']['SW']:.2f}"
+            )
+        with col2:
+            st.subheader("Outputs")
 
-    fig.update_layout(
-        title=f"Evolution of {y_label_map[cfg['metric']]}",
-        xaxis_title="Iterations",
-        yaxis_title=y_label_map[cfg['metric']],
-        template="plotly_white",
-        hovermode="x unified"
-    )
-    if cfg["ylog_scale"]:
-        fig.update_yaxes(type="log")
-    st.plotly_chart(fig, use_container_width=True)
-    # Affichage des valeurs finales
-    st.subheader("Final values")
-    cols = st.columns(len(cfg["lrMethods"]) + 1)
+            # --- Plot PDF ---
+            with open(figpath_plot, "rb") as f:
+                plot_bytes = f.read()
 
-    for i, method in enumerate(cfg["lrMethods"]):
-        if method in results['methods']:
-            with cols[i]:
-                st.metric(
-                    label=method,
-                    value=f"{results['methods'][method]['convergence_iter']} itérations",
-                    help=f"Last error: {results['methods'][method]['Speed'][-1]:.6f}"
+            # --- Legend PDF ---
+            with open(figpath_legend, "rb") as f:
+                legend_bytes = f.read()
+
+            # Put buttons on the same row
+            btn_col1, btn_col2 = st.columns(2)
+
+            with btn_col1:
+                st.download_button(
+                    "⬇️ Download Plot PDF",
+                    data=plot_bytes,
+                    file_name=figpath_plot,
+                    mime="application/pdf"
                 )
 
-    with cols[-1]:
-        st.metric(
-            label="Optimal",
-            value=f"LSW: {results['optimal']['LSW']:.2f}",
-            help=f"SW: {results['optimal']['SW']:.2f}"
-        )
-    with col2:
-        st.subheader("Outputs")
-
-        # --- Plot PDF ---
-        with open(figpath_plot, "rb") as f:
-            plot_bytes = f.read()
-
-        # --- Legend PDF ---
-        with open(figpath_legend, "rb") as f:
-            legend_bytes = f.read()
-
-        # Put buttons on the same row
-        btn_col1, btn_col2 = st.columns(2)
-
-        with btn_col1:
-            st.download_button(
-                "⬇️ Download Plot PDF",
-                data=plot_bytes,
-                file_name=figpath_plot,
-                mime="application/pdf"
-            )
-
-        with btn_col2:
-            st.download_button(
-                "⬇️ Download Legend PDF",
-                data=legend_bytes,
-                file_name=figpath_legend,
-                mime="application/pdf"
-            )
+            with btn_col2:
+                st.download_button(
+                    "⬇️ Download Legend PDF",
+                    data=legend_bytes,
+                    file_name=figpath_legend,
+                    mime="application/pdf"
+                )
+    else:
+        st.session_state.results = None
+except Exception:
+        st.info("ℹ️ No results available yet. Please press **▶️ Run Simulation** to start.")
 
 # -----------------------
 # SIMULATION TABLE
