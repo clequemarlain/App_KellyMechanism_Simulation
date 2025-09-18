@@ -244,6 +244,7 @@ with st.sidebar:
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     if cfg["metric"] in ["Utility", "Agg_Utility", "Bid", "Agg_Bid"]:
+        cfg["Random_set"] = False
         cfg["Players2See"] =  st.text_area(
             "List of players to display metrics",
             value=", ".join(str(x) for x in cfg.get("Players2See", DEFAULT_CONFIG["Players2See"])),
@@ -431,7 +432,13 @@ try:
     #    legends = LEGENDS
         # Création du graphique avec Plotly
         fig = go.Figure()
-        markers2 = ["circle", "square", "diamond", "cross", "triangle-up", "star"]
+        markers2 = [
+            "star", "pentagon", "x", "cross", "line-ns", "square",
+            "triangle-up", "triangle-down", "diamond",
+            "star", "pentagon", "x", "cross", "line-ns", "square",
+            "triangle-up", "triangle-down", "diamond",
+            "star", "pentagon", "x", "cross"
+        ]
         h_idx = 1
         for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
             if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
@@ -442,7 +449,7 @@ try:
                         y=data[:, j][::cfg["plot_step"]],
                         mode="lines+markers",  # ✅ ligne + marqueur
                         name=f"{legend} -- Player {j + 1}",
-                        line=dict(color=colors[i % len(colors)], width=3),  # couleur de ligne
+                        line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),  # couleur de ligne
                         marker=dict(
                             symbol=markers2[j % len(markers2)],  # type de marqueur
                             size=10,  # ✅ taille fixe (indépendante de plot_step)
@@ -490,7 +497,7 @@ try:
             figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                                                          fontsize=40, markersize=20, linewidth=12,linestyle="-",
                                                          Players2See=cfg["Players2See"],
-                                     ylog_scale=cfg["ylog_scale"], pltText=False, step=cfg["plot_step"])
+                                     ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
         else:
 
             save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"

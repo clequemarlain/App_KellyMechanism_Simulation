@@ -43,7 +43,7 @@ MARKERS_METHODS = {
 
 
 
-markers = [ "*", "p", "x", "+", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers = ["*", "p", "x", "+", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 
 
 def solve_nonlinear_eq(a, s, alpha, eps, c_vector, price=1.0, max_iter=100, tol=1e-5):
@@ -404,7 +404,7 @@ class GameKelly:
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             utiliy[t] = Payoff(self.fraction_resource(matrix_bids[t]), matrix_bids[t], a_vector, d_vector, self.alpha, self.price)
             utiliy_residual[t] = torch.abs(utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
-            agg_utility[t] = 1/(t+1) * torch.sum(utiliy[:t], dim=0)
+            agg_utility[t] = agg_utility[t-1] +  1/(t+1) * utiliy[t]
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
             if stop and err <= self.tol:
@@ -566,17 +566,17 @@ def plotGame_dim_N(
                 markeredgecolor="black",
             )
 
-        if pltText:
-            last_x = len(y_data[i]) - 1
-            last_y = y_data[i][-1]
-            plt.text(
-                last_x, last_y,
-                f"{last_y:.2e}",
-                fontweight="bold",
-                fontsize=fontsize,
-                bbox=dict(facecolor='white', alpha=0.7),
-                verticalalignment='bottom', horizontalalignment='right'
-            )
+            if pltText:
+                last_x = len((y_data[i])[:, j]) - 1
+                last_y = (y_data[i])[:, j][-1]
+                plt.text(
+                    last_x, last_y,
+                    f"{last_y:.2e}",
+                    fontweight="bold",
+                    fontsize=fontsize,
+                    bbox=dict(facecolor='white', alpha=0.7),
+                    verticalalignment='bottom', horizontalalignment='right'
+                )
 
     # --- Axis formatting ---
     for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
@@ -594,6 +594,9 @@ def plotGame_dim_N(
 
 
     # --- Save legend separately ---
+    rows = len(Players2See)  # ✅ always 2 rows
+    n_items = len(legends2)
+    ncol = int(np.ceil(n_items / rows))  # répartir équitablement
     fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
     ax = fig_legend.add_subplot(111)
     ax.axis("off")
@@ -605,7 +608,7 @@ def plotGame_dim_N(
         facecolor="white",
         edgecolor="black",
         prop={"weight": "bold", "size": fontsize},
-        ncol=len(legends2),  # ✅ all items on one line
+        ncol=ncol,#len(legends2),  # ✅ all items on one line
         loc="center",  # ✅ centered in the figure
         bbox_to_anchor=(0.5, 0.5)
     )
