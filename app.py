@@ -86,16 +86,35 @@ with st.sidebar:
     )
 
     cfg["price"] = st.sidebar.number_input("Price", 0.0001, 1000.0, float(cfg["price"]), step=0.1, format="%.4f")
+    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW", "Agg_Bid", "Agg_Utility",
+                   "Res_Utility"]
+    cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
+    DEFAULT_CONFIG["Random_set"] = True
+    if cfg["metric"] in ["Utility", "Agg_Utility", "Bid", "Agg_Bid"]:
+        DEFAULT_CONFIG["Random_set"] = False
+    cfg["Track"] = st.checkbox(
+        "Track the metric over the time?",
+        value=False,  # default = cfg["lr_vary"]
+        help="First plot here."
+    )
+    cfg["Random_set"] = st.checkbox(
+        "Random players' sets?",
+        value=DEFAULT_CONFIG["Random_set"],  # default = cfg["lr_vary"]
+        help="Check this box to enable hybrid sets variation."
+    )
+    cfg["a"] = st.number_input("a (base utility scale)", 0.1, 1e6, float(cfg["a"]), step=10.0, format="%.4f")
+    cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, cfg["a"], float(cfg["gamma"]), step=1.0)
 
     with st.sidebar.expander("Advanced Parameters"):
-        cfg["a"] = st.number_input("a (base utility scale)", 0.1, 1e6, float(cfg["a"]), step=10.0, format="%.4f")
+
         cfg["a_min"] = st.number_input("minimum a (base utility scale)", 0.1, 1e6, float(cfg["a_min"]), step=1.0, format="%.4f")
         cfg["mu"] = st.number_input("μ (c heterogeneity)", 0.0, 4.0, float(cfg["mu"]), step=0.1)
         cfg["c"] = st.number_input("c (budget base)", 0.0001, 1e6, float(cfg["c"]), step=10.0, format="%.4f")
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 1.0, 1.0*1e2, float(cfg["epsilon"]), step=0.5, format="%.6f")
         cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6, format="%.9f")
-        cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, cfg["a"], float(cfg["gamma"]), step=0.1)
+
+
 
         cfg["a_vector"] = st.text_area(
             "List of heterogeneous values a_i",
@@ -142,7 +161,7 @@ with st.sidebar:
     selected_methods = st.multiselect(
         "Select learning methods",
         lr_methods_all,
-        default=["DAQ", "SBRD"]
+        default=["DAQ","DAE","OGD", "SBRD"]
     )
 
     cfg["lrMethods"] = selected_methods
@@ -154,18 +173,14 @@ with st.sidebar:
 
     if "Hybrid" in selected_methods:
 
-        cfg["Random_set"] = st.checkbox(
-            "Random players' sets?",
-            value=True,  # default = cfg["lr_vary"]
-            help="Check this box to enable hybrid sets variation."
-        )
+
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
 
         # Number of hybrids
         num_hybrids = st.number_input(
             "How many Hybrid algorithms do you want to configure?",
             min_value=1,
-            max_value=10,
+            max_value=cfg["n"]-1,
             value=1,
             step=1
         )
@@ -181,6 +196,14 @@ with st.sidebar:
         else:
             cfg["Nb_A1"] = cfg["Nb_A1"]
 
+        # --- Select funcs ---
+        funcs_ = st.multiselect(
+            f"Select Hybrid funcs ",
+            hybrid_options,
+            default=hybrid_options[:2],
+            key=f"hybrid_funcs"
+        )
+        kk=1
         for h in range(num_hybrids):
             h_idx += 1
             st.markdown(f"#### ⚙️ Hybrid #{h + 1}")
@@ -192,7 +215,7 @@ with st.sidebar:
             funcs = st.multiselect(
                 f"Select Hybrid funcs for Hybrid #{h + 1}",
                 hybrid_options,
-                default=hybrid_options[:2],
+                default=funcs_,
                 key=f"hybrid_funcs_{h}"
             )
 
@@ -201,10 +224,11 @@ with st.sidebar:
                 f"Number of players in first subset for Hybrid #{h + 1}",
                 min_value=0,
                 max_value=cfg["n"]-1,
-                value=1,
+                value=kk,
                 step=1,
                 key=f"hybrid_k_{h}"  # ✅ unique par Hybrid
             )
+
 
             # Stocker ce k dans la liste
             cfg["Nb_A1"].append(int(k))
@@ -214,9 +238,17 @@ with st.sidebar:
 
             # --- Generate random sets ---
             if cfg["Random_set"]:
-                subset = random.sample(range(cfg["n"]), int(k))
+                subset = random.sample(range(cfg["n"]), k)
             else:
-                subset = list(range(0, k))
+                # Start with first k, excluding 1
+                subset = [i for i in range(k) if i != 1]
+
+                # Replace 1 with a number not in subset, excluding 1
+                if k > 1:
+                    remaining_candidates = set(range(cfg["n"])) - set(subset) - {1}
+                    if remaining_candidates:
+                        subset.append(random.choice(list(remaining_candidates)))
+
             remaining = [i for i in range(cfg["n"]) if i not in subset]
             cfg["Hybrid_sets"] = [subset, remaining]
 
@@ -239,15 +271,16 @@ with st.sidebar:
                 "Hybrid_funcs": funcs,
                 "Hybrid_sets": sets
             })
+            kk+=1
     LEGENDS = LEGENDS_Hybrid + LEGENDS
-    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW","Agg_Bid", "Agg_Utility", "Res_Utility"]
-    cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
+
+
+    cfg["Players2See"] = list(range(0, 1))
 
     if cfg["metric"] in ["Utility", "Agg_Utility", "Bid", "Agg_Bid"]:
-        cfg["Random_set"] = False
         cfg["Players2See"] =  st.text_area(
             "List of players to display metrics",
-            value=", ".join(str(x) for x in cfg.get("Players2See", DEFAULT_CONFIG["Players2See"])),
+            value=", ".join(str(x) for x in cfg.get("Players2See", cfg["Players2See"])),
             help="Comma-separated list of γ (a_i heterogeneity) values."
         )
         # Convert input string to list of floats
@@ -433,40 +466,43 @@ try:
         # Création du graphique avec Plotly
         fig = go.Figure()
         markers2 = [
-            "star", "pentagon", "x", "cross", "line-ns", "square",
+            "pentagon", "star", "x", "cross", "line-ns", "square",
             "triangle-up", "triangle-down", "diamond",
             "star", "pentagon", "x", "cross", "line-ns", "square",
             "triangle-up", "triangle-down", "diamond",
             "star", "pentagon", "x", "cross"
         ]
         h_idx = 1
-        for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
-            if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
-                # Pour les graphiques multidimensionnels
-                for j in range(data.shape[1]):
+        if cfg["Track"] :
+            for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
+
+                if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
+                    # Pour les graphiques multidimensionnels
+                    for j in range(data.shape[1]):
+                        fig.add_trace(go.Scatter(
+                            x=x_data[::cfg["plot_step"]],
+                            y=data[:, j][::cfg["plot_step"]],
+                            mode="lines+markers",  # ✅ ligne + marqueur
+                            name=f"{legend} -- Player {j + 1}",
+                            line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),  # couleur de ligne
+                            marker=dict(
+                                symbol=markers2[j % len(markers2)],  # type de marqueur
+                                size=10,  # ✅ taille fixe (indépendante de plot_step)
+                                line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
+                            ),
+                            opacity=0.8
+                        ))
+                    print(i, legend)
+
+
+                else:
                     fig.add_trace(go.Scatter(
                         x=x_data[::cfg["plot_step"]],
-                        y=data[:, j][::cfg["plot_step"]],
-                        mode="lines+markers",  # ✅ ligne + marqueur
-                        name=f"{legend} -- Player {j + 1}",
-                        line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),  # couleur de ligne
-                        marker=dict(
-                            symbol=markers2[j % len(markers2)],  # type de marqueur
-                            size=10,  # ✅ taille fixe (indépendante de plot_step)
-                            line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
-                        ),
-                        opacity=0.8
+                        y=data[::cfg["plot_step"]],
+                        mode='lines+markers',
+                        name=legend,
+                        line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
                     ))
-
-
-            else:
-                fig.add_trace(go.Scatter(
-                    x=x_data[::cfg["plot_step"]],
-                    y=data[::cfg["plot_step"]],
-                    mode='lines+markers',
-                    name=legend,
-                    line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
-                ))
 
 
         # Configuration du graphique
@@ -482,6 +518,7 @@ try:
             "Dist_To_Optimum_SW": "Dist2SW*"#Distance to the Optimal SW"
         }
         config["y_label"] = y_label_map[cfg["metric"]]
+        cfg["y_label"] = y_label_map[cfg["metric"]]
         fig.update_layout(
             title=f"Evolution of {y_label_map[cfg["metric"]]}",
             xaxis_title="Iterations",
@@ -494,15 +531,25 @@ try:
         #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
         if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
             save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-            figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-                                                         fontsize=40, markersize=20, linewidth=12,linestyle="-",
+            figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+                                                         fontsize=40, markersize=45, linewidth=12,linestyle="--",
                                                          Players2See=cfg["Players2See"],
                                      ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+
+            if "Hybrid" in selected_methods:
+                x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] *100
+                save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
+                xlab = r"$\alpha_{SBRD}$"
+                figpath_plot2, figpath_legend2, figpath_zoom2 =plotGame_dim_N_last(x_data_2, y_data[:len(LEGENDS_Hybrid)], xlab, cfg["y_label"], LEGENDS_Hybrid,
+                                                                                   saveFileName=save_to2, funcs_=funcs_,
+                                                             fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                             Players2See=cfg["Players2See"],
+                                        ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=1)
         else:
 
             save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-            figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
-                                                    saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
+            figpath_plot, figpath_legend, figpath_zoom = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
+                                                    saveFileName=save_to,fontsize=40, markersize=45, linewidth=12,linestyle="--",
                                                     ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
         fig.update_layout(
@@ -524,7 +571,7 @@ try:
                 with cols[i]:
                     st.metric(
                         label=method,
-                        value=f"{results['methods'][method]['convergence_iter']} itérations",
+                        value=f"{results['methods'][method]['convergence_iter']} iterations",
                         help=f"Last error: {results['methods'][method]['Speed'][-1]:.6f}"
                     )
 
@@ -540,15 +587,21 @@ try:
             # --- Plot PDF ---
             with open(figpath_plot, "rb") as f:
                 plot_bytes = f.read()
+            #with open(figpath_plot2, "rb") as f:
+            #    plot_bytes2 = f.read()
 
             # --- Legend PDF ---
             with open(figpath_legend, "rb") as f:
                 legend_bytes = f.read()
+            # --- Zoom PDF ---
+            with open(figpath_zoom, "rb") as f:
+                zoom_bytes = f.read()
 
             # Put buttons on the same row
-            btn_col1, btn_col2 = st.columns(2)
+            # --- Download buttons in one row ---
+            btn_cols = st.columns(4)  # reserve space for up to 4 buttons
 
-            with btn_col1:
+            with btn_cols[0]:
                 st.download_button(
                     "⬇️ Download Plot PDF",
                     data=plot_bytes,
@@ -556,13 +609,36 @@ try:
                     mime="application/pdf"
                 )
 
-            with btn_col2:
+            with btn_cols[1]:
                 st.download_button(
                     "⬇️ Download Legend PDF",
                     data=legend_bytes,
                     file_name=figpath_legend,
                     mime="application/pdf"
                 )
+
+            with btn_cols[2]:
+                st.download_button(
+                    "⬇️ Download Zoom PDF",
+                    data=zoom_bytes,
+                    file_name=figpath_zoom,
+                    mime="application/pdf"
+                )
+
+            # Optional Plot 2
+            try:
+                with open(figpath_plot2, "rb") as f:
+                    plot_bytes2 = f.read()
+                with btn_cols[3]:
+                    st.download_button(
+                        "⬇️ Download Plot 2 PDF",
+                        data=plot_bytes2,
+                        file_name=figpath_plot2,
+                        mime="application/pdf"
+                    )
+            except Exception:
+                pass
+
     else:
         st.session_state.results = None
 except Exception:
@@ -582,4 +658,5 @@ if st.button("📊 Run Simulation Table"):
 #    with st.spinner("Simulating..."):
 #        #runner = SimulationRunner(cfg)
 #        plot_results_multi_gamma_go(cfg, metric=cfg["metric"])
+
 

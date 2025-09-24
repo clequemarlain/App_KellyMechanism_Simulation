@@ -35,6 +35,9 @@ def run_simulation_table_avg(config, GameKelly):
 
     results = {}  # dict to store results
 
+    # Réinitialiser les placeholders
+    progress_bar = st.progress(0)
+    status_text = st.empty()
     for sim_gamma, gamma in enumerate(list_gamma):
         results[gamma] = {}
         for n in list_n:

@@ -67,7 +67,7 @@ class SimulationRunner:
 
         for i in range(self.config["Nb_random_sim"]):
             if not self.config["keep_initial_bid"]:
-                bid0 = (c - epsilon) * torch.rand(n) + a
+                bid0 = (c - epsilon) * torch.rand(n) + epsilon
 
             idx = 0
             NbHybrid = 0

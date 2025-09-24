@@ -1,6 +1,6 @@
 SIMULATION_CONFIG = {
-    "lrMethods": ["DAQ","OGD","SBRD"],
-    "Hybrid_funcs": ["DAQ", "DAH"],
+    "lrMethods": ["DAQ","DAE","OGD","SBRD"],
+    "Hybrid_funcs": ["DAQ", "DAE"],
     "T": 2000,  # Number of iterations in the learning process
     "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
     "n": 10,  # Number of players in the game
@@ -26,7 +26,7 @@ SIMULATION_CONFIG = {
     "plot_step": 200,
     "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD
     "pltText": True,  # Whether to display text annotations on the plot
-    "gamma": 10  # Exponent controlling the heterogeneity of the a_vector
+    "gamma": 0.0  # Exponent controlling the heterogeneity of the a_vector
 }
 SIMULATION_CONFIG["Hybrid_sets"] = [list(range(0, 1)), list(range(1, int(SIMULATION_CONFIG["n"])))]
 SIMULATION_CONFIG["legends"] = SIMULATION_CONFIG["lrMethods"]

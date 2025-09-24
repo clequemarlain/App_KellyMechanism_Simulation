@@ -3,28 +3,31 @@ import torch
 from scipy import optimize
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
+from matplotlib.ticker import MaxNLocator
+import matplotlib.ticker as mticker
 
 from scipy.optimize import root_scalar
 import sympy as sp
 
 colors = [
+    "slategray",  # Gris ardoise
+    "brown",  # Marron
+    "magenta",  # Magenta
+    "teal",  # Bleu-vert
 
-    "gold",        # Doré
-    "teal",        # Bleu-vert
-    "magenta",     # Magenta
-    "brown",       # Marron
-    "black",       # Noir
-    "crimson",     # Rouge profond
-    "darkcyan",    # Cyan foncé
-    "indigo",      # Bleu indigo
     "salmon",      # Saumon
     "lime",        # Vert clair
     "navy",        # Bleu marine
     "coral",       # Corail
     "darkgreen",   # Vert foncé
     "orchid",      # Orchidée (rose-violet)
-    "slategray",   # Gris ardoise
+
     "darkkhaki"    # Kaki clair
+    "gold",  # Doré
+    "black",  # Noir
+    "crimson",  # Rouge profond
+    "darkcyan",  # Cyan foncé
+    "indigo",  # Bleu indigo
 ]
 METHODS = ["DAQ", "DAE", "OGD", "SBRD"]
 COLORS_METHODS = {
@@ -34,6 +37,15 @@ COLORS_METHODS = {
    "SBRD" : "purple",  # Violet
 }
 
+colors22 = [
+
+
+
+    "slategray",  # Gris ardoise
+    "brown",  # Marron
+    "magenta",  # Magenta
+    "teal",  # Bleu-vert
+]
 MARKERS_METHODS = {
     "DAQ": "s",  # Orange foncé
     "DAE": "^",  # Bleu vif
@@ -43,7 +55,8 @@ MARKERS_METHODS = {
 
 
 
-markers = ["*", "p", "x", "+", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers = ["H", "d","*","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers22 = ["H", "d","*","p"]
 
 
 def solve_nonlinear_eq(a, s, alpha, eps, c_vector, price=1.0, max_iter=100, tol=1e-5):
@@ -403,7 +416,7 @@ class GameKelly:
 
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             utiliy[t] = Payoff(self.fraction_resource(matrix_bids[t]), matrix_bids[t], a_vector, d_vector, self.alpha, self.price)
-            utiliy_residual[t] = torch.abs(utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
+            utiliy_residual[t] = (utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
             agg_utility[t] = agg_utility[t-1] +  1/(t+1) * utiliy[t]
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
@@ -418,7 +431,7 @@ class GameKelly:
 
 def plotGame(
     x_data, y_data, x_label, y_label, legends, saveFileName,
-    ylog_scale, fontsize=40, markersize=20, linewidth=12,
+    ylog_scale, fontsize=40, markersize=40, linewidth=12,
     linestyle="-", pltText=False, step=1
 ):
     plt.figure(figsize=(18, 12))
@@ -431,39 +444,26 @@ def plotGame(
         plt.yscale("log")
 
     # --- Plot curves ---
-    for i in range(len(legends)):
+    for i, legend in enumerate(legends):
         color = "red" if legends[i] == "Optimal" else colors[i]
         marker = "" if legends[i] ==  "Optimal" else markers[i]
-        if legends[i] in METHODS:
-            color = COLORS_METHODS[legends[i]]
-            marker = MARKERS_METHODS[legends[i]]
+        if legend in METHODS:
+            color = COLORS_METHODS[legend]
+            marker = MARKERS_METHODS[legend]
 
 
-        if linestyle == "":
-            mask = y_data[i] > 0
-            x_data_tmp = [x_data_copy[i]] * y_data[i][mask].shape[0]
-            plt.plot(
-                x_data_tmp[::step],
-                (y_data[i][mask])[::step],
-                linestyle=linestyle,
-                linewidth=linewidth,
-                marker=marker,
-                markersize=markersize,
-                color=color,
-                label=f"{legends[i]}"
-            )
-        else:
-            plt.plot(
-                x_data[::step],
-                (y_data[i])[::step],
-                linestyle=linestyle,
-                linewidth=linewidth,
-                marker=marker,
-                markersize=markersize,
-                color=color,
-                label=f"{legends[i]}",
-                markeredgecolor="black",
-            )
+
+        plt.plot(
+            x_data[::step],
+            (y_data[i])[::step],
+            linestyle=linestyle,
+            linewidth=linewidth,
+            marker=marker,
+            markersize=markersize,
+            color=color,
+            label=f"{legend}",
+            markeredgecolor="black",
+        )
 
         if pltText:
             last_x = len(y_data[i]) - 1
@@ -492,11 +492,11 @@ def plotGame(
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=("red" if legends[i] == "Optimal" else  COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]),
+        Line2D([0], [0], color=("red" if legends[k] == "Optimal" else  COLORS_METHODS[legends[k]] if legends[k] in METHODS else colors[k]),
                markeredgecolor="black", linestyle=linestyle if linestyle != "" else "-",
-               marker=("" if legends[i] == "Optimal" else MARKERS_METHODS[legends[i]] if legends[i] in METHODS else markers[i] ),
+               marker=("" if legends[k] == "Optimal" else MARKERS_METHODS[legends[k]] if legends[k] in METHODS else markers[k] ),
                markersize=markersize, linewidth=linewidth)
-        for i in range(len(legends))
+        for k in range(len(legends))
     ]
 
     # --- Save legend separately ---
@@ -520,11 +520,73 @@ def plotGame(
     fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
     plt.close(fig_legend)
 
-    return figpath_plot, figpath_legend
+    fig_zoom = plt.figure(figsize=(18, 12))
+    ax_zoom = fig_zoom.add_subplot(111)
 
+    for i in range(len(legends)-1):
+        color = "red" if legends[i] == "Optimal" else colors[i]
+        marker = "" if legends[i] ==  "Optimal" else markers[i]
+        if legends[i] in METHODS:
+            color = COLORS_METHODS[legends[i]]
+            marker = MARKERS_METHODS[legends[i]]
+        #n = y_data[i].shape[1]
+
+
+        x_vals = x_data[-5:]  # 5 derniers x
+        y_vals = (y_data[i])[-5:]  # 5 derniers y
+
+        ax_zoom.plot(
+        x_vals,
+        y_vals,
+        linestyle=linestyle,
+        linewidth=linewidth,
+        marker=marker,
+        markersize=2*markersize,
+        color=color,
+        label=f"{legends[i]}",
+        markeredgecolor="black",
+        )
+        last_x, last_y = x_vals[-1], y_vals[-1]
+        ax_zoom.text(
+            last_x, last_y,
+            f"{last_y:.3e}",
+            fontweight="bold",
+            fontsize=2*markersize,
+            bbox=dict(facecolor="white", alpha=0.7),
+            verticalalignment="bottom",
+            horizontalalignment="right"
+        )
+
+    # même axes que principal (pas de zoom)
+    ax_zoom.set_xlim(x_data[-5], x_data[-1])
+    ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
+
+
+
+    for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
+        label.set_fontweight("bold")
+    ax_zoom.tick_params(axis="both", labelsize=2*markersize)
+    ax_zoom.set_ylabel("", fontweight="bold")
+    ax_zoom.yaxis.label.set_size(1.5*markersize)
+    ax_zoom.set_xlabel(f"", fontweight="bold")
+
+    ax_zoom.set_xticks([])  # Supprime les graduations
+    ax_zoom.set_xlabel("")  # Supprime le label
+    ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
+
+    ax_zoom.spines["top"].set_visible(False)
+
+    ax_zoom.grid(True)
+    fig_zoom.tight_layout()
+
+    figpath_zoom = f"{saveFileName}_zoom.pdf"
+    fig_zoom.savefig(figpath_zoom, format="pdf")
+    plt.close(fig_zoom)
+
+    return figpath_plot, figpath_legend, figpath_zoom
 def plotGame_dim_N(
     x_data, y_data, x_label, y_label, legends, saveFileName,
-    ylog_scale, Players2See=[1,2], fontsize=40, markersize=25, linewidth=12, linestyle="-",
+    ylog_scale, Players2See=[1,2], fontsize=40, markersize=40, linewidth=12, linestyle="-",
     pltText=False, step=1
 ):
     plt.figure(figsize=(18, 12))
@@ -548,7 +610,7 @@ def plotGame_dim_N(
         n = y_data[i].shape[1]
 
         for j in Players2See:
-            legends2.append(f"{legends[i]} -- Player {j+1}")
+            legends2.append(f"{legends[i]} -- Player {j+1}" if legends[i] in METHODS else legends[i])
             # --- Build legend handles ---
             legend_handles.append(
                 Line2D([0], [0], color=color
@@ -558,10 +620,10 @@ def plotGame_dim_N(
             plt.plot(
                 x_data[::step],
                 (y_data[i])[:, j][::step],
-                linestyle=linestyles[i],
+                linestyle=linestyle,
                 linewidth=linewidth,
                 marker=markers[j],
-                markersize=markersize,
+                markersize=2*markersize,
                 color=color,
                 markeredgecolor="black",
             )
@@ -617,4 +679,167 @@ def plotGame_dim_N(
     fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
     plt.close(fig_legend)
 
-    return figpath_plot, figpath_legend
+
+    fig_zoom = plt.figure(figsize=(18, 12))
+    ax_zoom = fig_zoom.add_subplot(111)
+
+    for i in range(len(legends)):
+        color = (
+            "red" if legends[i] == "Optimal"
+            else COLORS_METHODS[legends[i]] if legends[i] in METHODS
+            else colors[i]
+        )
+        n = y_data[i].shape[1]
+
+        for j in Players2See:
+            x_vals = x_data[-5:]  # 5 derniers x
+            y_vals = (y_data[i])[-5:, j]  # 5 derniers y
+
+            ax_zoom.plot(
+                x_vals,
+                y_vals,
+                linestyle=linestyle,
+                linewidth=linewidth,
+                marker=markers[j],
+                markersize=2*markersize,
+                color=color,
+                markeredgecolor="black",
+            )
+            last_x, last_y = x_vals[-1], y_vals[-1]
+            ax_zoom.text(
+                last_x, last_y,
+                f"{last_y:.3e}",
+                fontweight="bold",
+                fontsize=80,
+                bbox=dict(facecolor="white", alpha=0.7),
+                verticalalignment="bottom",
+                horizontalalignment="right"
+            )
+
+    # même axes que principal (pas de zoom)
+    ax_zoom.set_xlim(x_data[-5], x_data[-1])
+    ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
+
+
+
+    for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
+        label.set_fontweight("bold")
+    ax_zoom.tick_params(axis="both", labelsize=2*markersize)
+    ax_zoom.set_ylabel("",fontweight="bold")
+    ax_zoom.yaxis.label.set_size(2*markersize)
+    ax_zoom.set_xlabel(f"", fontweight="bold")
+
+    ax_zoom.set_xticks([])  # Supprime les graduations
+    ax_zoom.set_xlabel("")  # Supprime le label
+    ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
+
+    ax_zoom.spines["top"].set_visible(False)
+
+    ax_zoom.grid(True)
+    fig_zoom.tight_layout()
+
+    figpath_zoom = f"{saveFileName}_zoom.pdf"
+    fig_zoom.savefig(figpath_zoom, format="pdf")
+    plt.close(fig_zoom)
+
+    return figpath_plot, figpath_legend, figpath_zoom
+
+
+def plotGame_dim_N_last(
+        x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
+        ylog_scale=False, Players2See=[1, 2], fontsize=40,
+        markersize=40, linewidth=12, linestyle="-",
+        pltText=False, step=1
+):
+    plt.figure(figsize=(18, 12))
+    y_data = np.array(y_data, dtype=object)  # s'assurer que les sous-tableaux passent bien
+
+    plt.rcParams.update({'font.size': fontsize})
+
+    if ylog_scale:
+        plt.yscale("log")
+
+    legend_handles = []
+    legends2 = []
+    curves = []
+    for j, fc in enumerate(funcs_):
+        curve = []
+        for i in range(len(legends)):
+            curve.append((y_data[i])[:, j][-1])
+        curves.append(
+            curve
+        )
+    for j, fc in enumerate(funcs_):
+        color = (
+            COLORS_METHODS[fc] if fc in METHODS else
+            colors[
+                j])
+        marker = (
+            MARKERS_METHODS[fc] if fc in METHODS else
+            markers[j % len(markers)])
+
+        legend_handles.append(
+            Line2D([0], [0], color=color,
+                   marker=marker,
+                   markersize=markersize,
+                   markeredgecolor="black",
+                   linestyle=linestyle,
+                   linewidth=linewidth)
+        )
+
+        # tracer l’évolution (jusqu’à la dernière valeur)
+        curve = curves[j]
+
+        plt.plot(
+            x_data[::step],
+            curve[::step],
+            linestyle=linestyle,
+            linewidth=linewidth,
+            marker=marker,
+            markersize= 1.5*markersize,
+            color=color,
+            label=f"{funcs_[j]}",
+            markeredgecolor="black",
+        )
+
+        if pltText:
+            plt.text(x_data[-1], curve[-1], f"{curve[-1]:.3f}",
+                fontweight="bold",
+                fontsize=fontsize,
+                bbox=dict(facecolor="white", alpha=0.7),
+                verticalalignment="bottom",
+                horizontalalignment="right")
+
+    # légendes et labels
+    # légendes et labels
+    ax = plt.gca()
+
+    # --- Axis formatting ---
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight("bold")
+
+   # ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # ✅ ticks entiers
+    ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
+
+    plt.ylabel(f"{y_label}", fontweight="bold")
+    plt.xlabel(f"{x_label}", fontweight="bold")
+    plt.grid(True)
+
+    # 🔑 Horizontal legend
+    plt.legend(
+        loc="upper left",   # en haut au centre, à l’intérieur
+        ncol=len(funcs_),     # force horizontal
+        frameon=False,
+        prop={'weight': 'bold'},
+        edgecolor="black"
+    )
+    plt.tight_layout()
+
+
+
+    # --- Save plot without legend ---
+    figpath_plot = f"{saveFileName}_plot.pdf"
+    plt.savefig(figpath_plot, format="pdf")
+
+
+    return figpath_plot, figpath_plot, figpath_plot
