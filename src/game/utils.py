@@ -798,7 +798,7 @@ def plotGame_dim_N_last(
             marker=marker,
             markersize= 1.5*markersize,
             color=color,
-            label=f"{funcs_[j]}",
+            label=f"A{j+1}",
             markeredgecolor="black",
         )
 
@@ -821,14 +821,14 @@ def plotGame_dim_N_last(
    # ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # ✅ ticks entiers
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
 
-    plt.ylabel(f"{y_label}", fontweight="bold")
-    plt.xlabel(f"{x_label}", fontweight="bold")
+    plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
+    plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.grid(True)
 
     # 🔑 Horizontal legend
     plt.legend(
-        loc="upper left",   # en haut au centre, à l’intérieur
-        ncol=len(funcs_),     # force horizontal
+        #loc="upper left",   # en haut au centre, à l’intérieur
+        #ncol=len(funcs_),     # force horizontal
         frameon=False,
         prop={'weight': 'bold'},
         edgecolor="black"
