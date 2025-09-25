@@ -36,7 +36,9 @@ class SimulationRunner:
 
         #print(f"Hybrid_sets:{Hybrid_sets}")
         eps = epsilon * torch.ones(1)
-        bid0 = (c - epsilon) * torch.rand(n) + a
+        z_sol_equ = solve_quadratic(self.config["n"],  self.config["a"],  self.config["delta"])
+        var_init = 10
+        bid0 = (2*var_init) * torch.rand(n) + z_sol_equ - var_init
 
         c_min = epsilon
 
@@ -63,12 +65,14 @@ class SimulationRunner:
         # Réinitialiser les placeholders
         progress_bar = st.progress(0)
         status_text = st.empty()
-
-
+        game_set = GameKelly(n, price, eps, delta, alpha, tol)
+        Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
+            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True,
+        )
+        print(f"alpha:{self.config["Nb_A1"]}")
         for i in range(self.config["Nb_random_sim"]):
-            if not self.config["keep_initial_bid"]:
-                bid0 = (c - epsilon) * torch.rand(n) + epsilon
-
+            #if not self.config["keep_initial_bid"]:
+            #    bid0 = (c - epsilon) * torch.rand(n) + epsilon
             idx = 0
             NbHybrid = 0
 
@@ -78,6 +82,7 @@ class SimulationRunner:
 
                 if lrMethod == "Hybrid" :
                     NbHybrid = NbHybrid+1
+
 
                     subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
                     remaining = [i for i in range(self.config["n"]) if i not in subset]
@@ -107,9 +112,12 @@ class SimulationRunner:
                     'SW': SocialWelfare.detach().numpy(),
                     'Dist_To_Optimum_SW': Distance2optSW.detach().numpy(),
                     'Bid': Bids[0].detach().numpy(),
-                    'Agg_Bid': Bids[1].detach().numpy(),
+                    'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
+                    'Avg_Bid': Bids[1].detach().numpy(),
+                    'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
                     'Utility': Utility_set[0].detach().numpy(),
-                    'Agg_Utility': Utility_set[1].detach().numpy(),
+                    'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
+                    'Avg_Utility': Utility_set[1].detach().numpy(),
                     'Res_Utility': Utility_set[2].detach().numpy(),
                     'final_bids': Bids[0][-1].detach().numpy(),
                     'convergence_iter': torch.argmin(error_NE_set).item() if torch.min(error_NE_set) <= tol else T
@@ -162,12 +170,12 @@ if  __name__ == "__main__":
                 y_data.append(results['methods'][method]['SW'])
             elif cfg["metric"] == "Bid":
                 y_data.append(results['methods'][method]['Bid'])
-            elif cfg["metric"] == "Agg_Bid":
-                y_data.append(results['methods'][method]['Agg_Bid'])
+            elif cfg["metric"] == "Avg_Bid":
+                y_data.append(results['methods'][method]['Avg_Bid'])
             elif cfg["metric"] == "Utility":
                 y_data.append(results['methods'][method]['Utility'])
-            elif cfg["metric"] == "Agg_Utility":
-                y_data.append(results['methods'][method]['Agg_Utility'])
+            elif cfg["metric"] == "Avg_Utility":
+                y_data.append(results['methods'][method]['Avg_Utility'])
             legends.append(method)
 
     # Ajout de la valeur optimale si applicable
@@ -179,7 +187,7 @@ if  __name__ == "__main__":
             y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
         LEGENDS.append("Optimal")
 
-    if cfg["metric"] in ["Bid", "Agg_Bid", "Utility", "Agg_Utility", "Res_Utility"]:
+    if cfg["metric"] in ["Bid", "Avg_Bid", "Utility", "Avg_Utility", "Res_Utility"]:
         save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
         figpath_plot, figpath_legend =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
                                                      fontsize=40, markersize=20, linewidth=12,linestyle="-",

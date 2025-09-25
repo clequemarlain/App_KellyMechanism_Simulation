@@ -58,6 +58,22 @@ MARKERS_METHODS = {
 markers = ["H", "d","*","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 markers22 = ["H", "d","*","p"]
 
+def solve_quadratic(n, a, delta):
+    delta = torch.tensor(delta)
+    a = torch.tensor(a)
+    n = torch.tensor(n)
+
+    A = n
+    B = delta - a * (n - 1)
+    C = -a * delta
+
+    disc = B**2 - 4*A*C
+    sqrt_disc = torch.sqrt(disc)
+
+    z1 = (-B + sqrt_disc) / (2*A)
+    z2 = (-B - sqrt_disc) / (2*A)
+
+    return z1#, z2
 
 def solve_nonlinear_eq(a, s, alpha, eps, c_vector, price=1.0, max_iter=100, tol=1e-5):
     """
@@ -417,14 +433,19 @@ class GameKelly:
             vec_SW[t] = SW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
             utiliy[t] = Payoff(self.fraction_resource(matrix_bids[t]), matrix_bids[t], a_vector, d_vector, self.alpha, self.price)
             utiliy_residual[t] = (utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
-            agg_utility[t] = agg_utility[t-1] +  1/(t+1) * utiliy[t]
+            #agg_utility[t] = agg_utility[t-1] +  1/(t+1) * utiliy[t]
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
             if stop and err <= self.tol:
                 break
         Bids = [matrix_bids[:k, :], agg_bids[:k, :]]
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
+        agg_utility = torch.cumsum(utiliy[:k, :], dim=0)
+        col = torch.arange(1,k+1)
+        agg_utility = agg_utility / col.unsqueeze(1).expand(-1,self.n)
+
         Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :]]
+
         Welfare = [vec_SW[:k], vec_LSW[:k]]
         return Bids, Welfare, Utility_set, error_NE[:k]  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
 
@@ -607,7 +628,7 @@ def plotGame_dim_N(
             "red" if legends[i] == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else
             colors[
                 i])
-        n = y_data[i].shape[1]
+        #n = y_data[i].shape[1]
 
         for j in Players2See:
             legends2.append(f"{legends[i]} -- Player {j+1}" if legends[i] in METHODS else legends[i])
@@ -749,7 +770,7 @@ def plotGame_dim_N_last(
         x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
         ylog_scale=False, Players2See=[1, 2], fontsize=40,
         markersize=40, linewidth=12, linestyle="-",
-        pltText=False, step=1
+        pltText=False, step=1, tol=1e-5
 ):
     plt.figure(figsize=(18, 12))
     y_data = np.array(y_data, dtype=object)  # s'assurer que les sous-tableaux passent bien
@@ -770,13 +791,12 @@ def plotGame_dim_N_last(
             curve
         )
     for j, fc in enumerate(funcs_):
-        color = (
-            COLORS_METHODS[fc] if fc in METHODS else
-            colors[
-                j])
-        marker = (
-            MARKERS_METHODS[fc] if fc in METHODS else
-            markers[j % len(markers)])
+
+        color = "red" if fc == "Optimal" else colors[j]
+        marker = "" if fc == "Optimal" else markers[j % len(markers)]
+        if fc in METHODS:
+            color = COLORS_METHODS[fc]
+            marker = MARKERS_METHODS[fc]
 
         legend_handles.append(
             Line2D([0], [0], color=color,
@@ -787,20 +807,30 @@ def plotGame_dim_N_last(
                    linewidth=linewidth)
         )
 
-        # tracer l’évolution (jusqu’à la dernière valeur)
-        curve = curves[j]
-
-        plt.plot(
-            x_data[::step],
-            curve[::step],
-            linestyle=linestyle,
-            linewidth=linewidth,
-            marker=marker,
-            markersize= 1.5*markersize,
-            color=color,
-            label=f"A{j+1}",
-            markeredgecolor="black",
-        )
+        if fc == "Optimal":
+            # tracer une ligne horizontale rouge à la valeur k
+            curve = [y_data[-1]]
+            plt.axhline(
+                y=y_data[-1],
+                color=color,
+                linestyle=linestyle,
+                linewidth=linewidth,
+                label=f"{funcs_[-1]}"
+            )
+        else:
+            # tracer l’évolution (jusqu’à la dernière valeur)
+            curve = curves[j]
+            plt.plot(
+                x_data[::step],
+                curve[::step],
+                linestyle=linestyle,
+                linewidth=linewidth,
+                marker=marker,
+                markersize=1.25 * markersize,
+                color=color,
+                label=f"{funcs_[j]}",
+                markeredgecolor="black",
+            )
 
         if pltText:
             plt.text(x_data[-1], curve[-1], f"{curve[-1]:.3f}",
@@ -827,11 +857,11 @@ def plotGame_dim_N_last(
 
     # 🔑 Horizontal legend
     plt.legend(
-        #loc="upper left",   # en haut au centre, à l’intérieur
-        #ncol=len(funcs_),     # force horizontal
+       # loc="lower left",
+        #bbox_to_anchor=(0.5, -0.15),  # ✅ sous la figure
+        #ncol=len(funcs_),  # ✅ labels sur une seule ligne
         frameon=False,
-        prop={'weight': 'bold'},
-        edgecolor="black"
+        prop={'weight': 'bold'}
     )
     plt.tight_layout()
 
@@ -840,6 +870,8 @@ def plotGame_dim_N_last(
     # --- Save plot without legend ---
     figpath_plot = f"{saveFileName}_plot.pdf"
     plt.savefig(figpath_plot, format="pdf")
+
+
 
 
     return figpath_plot, figpath_plot, figpath_plot
