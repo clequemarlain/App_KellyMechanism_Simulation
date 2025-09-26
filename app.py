@@ -73,7 +73,7 @@ with st.sidebar:
     cfg["T"] = st.number_input("Iterations (T)", 10, 100000, cfg["T"], step=10) #st.sidebar.slider("Iterations (T)", 10, 10000, cfg["T"], step=10)
     cfg["Nb_random_sim"] = st.number_input("Number of simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.sidebar.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
-    cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 5.0, float(cfg["eta"]), step=0.1, format="%.4f")
+    cfg["eta"] = st.sidebar.number_input("Learning rate (η)", 0.0001, 100.0, float(cfg["eta"]), step=0.1, format="%.4f")
     cfg["lr_vary"] = st.checkbox(
         "Vary learning rate during training?",
         value=cfg["lr_vary"],  # default = cfg["lr_vary"]
@@ -86,7 +86,7 @@ with st.sidebar:
     )
 
     cfg["price"] = st.sidebar.number_input("Price", 0.0001, 1000.0, float(cfg["price"]), step=0.1, format="%.4f")
-    metrics_all = ["Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW", "Avg_Bid", "Avg_Utility",
+    metrics_all = ["Relative_Efficienty_Loss","Utility", "Bid", "Speed", "SW", "LSW", "Dist_To_Optimum_SW", "Avg_Bid", "Avg_Utility",
                    "Res_Utility"]
     cfg["metric"] = st.sidebar.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
     DEFAULT_CONFIG["Random_set"] = True
@@ -103,6 +103,8 @@ with st.sidebar:
         help="Check this box to enable hybrid sets variation."
     )
     cfg["a"] = st.number_input("a (base utility scale)", 0.1, 1e6, float(cfg["a"]), step=10.0, format="%.4f")
+    cfg["var_init"] = st.number_input("var_init (Control initial bid)", 0.0, 1e6, 0.0, step=1.0,
+                                      format="%.4f")
     cfg["d_vector"] = st.number_input("d_i (encodes average service requirement)", 0.0, 1e6, 0.0, step=10.0, format="%.4f")
     cfg["gamma"] = st.number_input("γ (a_i heterogeneity)", 0.0, cfg["a"], float(cfg["gamma"]), step=1.0)
 
@@ -501,7 +503,6 @@ if 'results' in st.session_state:
                         ),
                         opacity=0.8
                     ))
-                print(i, legend)
 
 
             else:
@@ -524,7 +525,8 @@ if 'results' in st.session_state:
         "Utility": "Player utility",
         "Avg_Utility": "Average Utility",
         "Res_Utility": "Player Utility Residual",
-        "Dist_To_Optimum_SW": "Dist2SW*"#Distance to the Optimal SW"
+        "Dist_To_Optimum_SW": "Dist2SW*",#Distance to the Optimal SW"
+        "Relative_Efficienty_Loss": "REL"
     }
     config["y_label"] = y_label_map[cfg["metric"]]
     cfg["y_label"] = y_label_map[cfg["metric"]]
@@ -540,10 +542,10 @@ if 'results' in st.session_state:
     #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
     if cfg["metric"] in ["Bid", "Avg_Bid", "Utility", "Avg_Utility", "Res_Utility"]:
         save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-        #figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
-        #                                             fontsize=40, markersize=45, linewidth=12,linestyle="--",
-        #                                             Players2See=cfg["Players2See"],
-        #                         ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+        figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS, saveFileName=save_to,
+                                                     fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                     Players2See=cfg["Players2See"],
+                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
 
         if "Hybrid" in selected_methods:
             x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] *100

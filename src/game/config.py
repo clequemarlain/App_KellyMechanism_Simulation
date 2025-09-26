@@ -16,6 +16,7 @@ SIMULATION_CONFIG = {
     "Players2See": [1],
     "tol": 1e-5,  # Tolerance threshold for considering the game as converged
     "lr_vary": False,  # Learning rate vary or not
+    "var_init": 100,
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
     "x_label": "Time step (t)",  # Label for the x-axis in the output plot
     "metric": "SW",  # "Speed" or "lpoa",or "LSW" , "Bid", "utility", "Dist-2-Opt-SW"

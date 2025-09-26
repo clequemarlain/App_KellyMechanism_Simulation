@@ -37,7 +37,7 @@ class SimulationRunner:
         #print(f"Hybrid_sets:{Hybrid_sets}")
         eps = epsilon * torch.ones(1)
         z_sol_equ = solve_quadratic(self.config["n"],  self.config["a"],  self.config["delta"])
-        var_init = 10
+        var_init = self.config["var_init"]
         bid0 = (2*var_init) * torch.rand(n) + z_sol_equ - var_init
 
         c_min = epsilon
@@ -69,10 +69,11 @@ class SimulationRunner:
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
             "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True,
         )
-        print(f"alpha:{self.config["Nb_A1"]}")
         for i in range(self.config["Nb_random_sim"]):
-            #if not self.config["keep_initial_bid"]:
-            #    bid0 = (c - epsilon) * torch.rand(n) + epsilon
+            if not self.config["keep_initial_bid"]:
+                #bid0 = (c - epsilon) * torch.rand(n) + epsilon
+                var_init = self.config["var_init"]
+                bid0 = (2 * var_init) * torch.rand(n) + z_sol_equ - var_init
             idx = 0
             NbHybrid = 0
 
@@ -80,7 +81,7 @@ class SimulationRunner:
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
-                if lrMethod == "Hybrid" :
+                if lrMethod == "Hybrid":
                     NbHybrid = NbHybrid+1
 
 
@@ -104,6 +105,7 @@ class SimulationRunner:
                 SocialWelfare = Welfare[0]
                 Distance2optSW = 1 / n * torch.abs(SW_opt - Welfare[0])
                 LSW = Welfare[1]
+                Relative_Efficienty_Loss = (SocialWelfare - SW_opt)/SW_opt
 
                 # --- Prepare one simulation result ---
                 sim_result = {
@@ -111,6 +113,7 @@ class SimulationRunner:
                     'LSW': LSW.detach().numpy(),
                     'SW': SocialWelfare.detach().numpy(),
                     'Dist_To_Optimum_SW': Distance2optSW.detach().numpy(),
+                    'Relative_Efficienty_Loss': Relative_Efficienty_Loss.detach().numpy(),
                     'Bid': Bids[0].detach().numpy(),
                     'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
                     'Avg_Bid': Bids[1].detach().numpy(),
