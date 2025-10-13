@@ -48,30 +48,46 @@ def run_simulation_table_avg(config, GameKelly):
             dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
             d_vector = 0.7 * dmin * 0
 
-            for lrMethod in lrMethods:
+            idx = 0
+            for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
-
+                copy_keys={}
                 for sim in range(Nb_random_sim):
                     eps = epsilon * torch.ones(n)
-                    bid0 = bid0 = (c - epsilon) * torch.rand(n) + a
+                    bid0 = bid0 = (c - epsilon) * torch.rand(n) + epsilon
                     Hybrid_funcs, Hybrid_sets = [], []
 
                     lrMethod2 = lrMethod
                     if lrMethod == "Hybrid":
-                        idx = 0
-                        subset = random.sample(range(n), int(config["Nb_A1"][idx]))
-                        remaining = [i for i in range(n) if i not in subset]
-                        Hybrid_sets = [subset, remaining]
-                        Hybrid_funcs = config["Hybrids"][idx]["Hybrid_funcs"]
-                        lrMethod2 = f"(A1: {config['Nb_A1'][idx]}, A2: {n - config['Nb_A1'][idx]})"
+                        NbHybrid = NbHybrid + 1
+
+                        # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
+                        # remaining = [i for i in range(self.config["n"]) if i not in subset]
+                        # if self.config["Random_set"] and NbHybrid == 1:
+                        #     Hybrid_sets = [subset, remaining]
+                        # else:
+                        Hybrid_sets = config["Hybrid_sets"][NbHybrid - 1]
+                        Hybrid_funcs = config["Hybrid_funcs"][NbHybrid - 1]
+
+                        lrMethod2 = f"({Hybrid_funcs[0]}: {config['Nb_A1'][NbHybrid - 1]}, {Hybrid_funcs[1]}: {n - config['Nb_A1'][NbHybrid - 1]})"
+                        key = tuple(Hybrid_funcs + ["Hybrid"])
+                        if key not in copy_keys:
+                            copy_keys[lrMethod2] = key
+                        idx += 1
+                    elif lrMethod != "SBRD":  # self.config["num_lrmethod"]!=0:
+                        key = lrMethod
+                        if key not in copy_keys:
+                            copy_keys[lrMethod] = (key)
+
+                        lrMethod2 = rf"{lrMethod} -- $\eta={config["Learning_rates"][idxMthd]}$"
+                        # print(f"lrMethod2:{lrMethod2}")
                         idx += 1
 
-                    game = GameKelly(n, price, eps, delta, alpha, tol)
-                    Bids, Welfare, Utility_set, error_NE_set = game.learning(
-                        lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
-                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets, stop=True
+                    game_set = GameKelly(n, price, eps, delta, alpha, tol)
+                    Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
+                        lrMethod, a_vector, c_vector, d_vector, T, config["Learning_rates"][idxMthd], bid0,
+                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
                     )
-
                     min_error = torch.min(error_NE_set)
                     nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
@@ -102,7 +118,7 @@ def display_results_streamlit_dict(results, config, save_path=None):
     """
     list_gamma = config["list_gamma"]
     list_n = config["list_n"]
-    lrMethods = config["lrMethods"]
+    lrMethods = config["LEGENDS"]
 
     # Build headers
     headers = ["gamma", "n"] + lrMethods

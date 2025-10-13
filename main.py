@@ -38,7 +38,7 @@ class SimulationRunner:
         eps = epsilon * torch.ones(1)
         z_sol_equ = solve_quadratic(self.config["n"],  self.config["a"],  self.config["delta"])
         var_init = self.config["var_init"]
-        bid0 = (2*var_init) * torch.rand(n) + z_sol_equ - var_init
+        bid0 = torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
 
         c_min = epsilon
 
@@ -71,41 +71,55 @@ class SimulationRunner:
         )
         for i in range(self.config["Nb_random_sim"]):
             if not self.config["keep_initial_bid"]:
-                #bid0 = (c - epsilon) * torch.rand(n) + epsilon
-                var_init = self.config["var_init"]
-                bid0 = (2 * var_init) * torch.rand(n) + z_sol_equ - var_init
+                if self.config["Random_Initial_Bid"]:
+                    bid0 = (c - epsilon) * torch.rand(n) + epsilon
+                else:
+                    var_init = self.config["var_init"]
+                    bid0 =  torch.abs((2 * var_init) * torch.rand(n) + z_sol_equ - var_init)
             idx = 0
             NbHybrid = 0
 
-            for  lrMethod in lrMethods:
+            copy_keys ={}
+            for idxMthd, lrMethod in enumerate(lrMethods):
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
                 if lrMethod == "Hybrid":
                     NbHybrid = NbHybrid+1
 
+                   # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
+                   # remaining = [i for i in range(self.config["n"]) if i not in subset]
+                   # if self.config["Random_set"] and NbHybrid == 1:
+                   #     Hybrid_sets = [subset, remaining]
+                    #else:
+                    Hybrid_sets = self.config["Hybrid_sets"][NbHybrid-1]
+                    Hybrid_funcs = self.config["Hybrid_funcs"][NbHybrid-1]
 
-                    subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
-                    remaining = [i for i in range(self.config["n"]) if i not in subset]
-                    if self.config["Random_set"] and NbHybrid == 1:
-                        Hybrid_sets = [subset, remaining]
-                    else:
-                        Hybrid_sets = self.config["Hybrids"][idx]["Hybrid_sets"]
-                    Hybrid_funcs = self.config["Hybrids"][idx]["Hybrid_funcs"]
-                    lrMethod2 = f"(A1: {self.config['Nb_A1'][idx]}, A2: {n - self.config['Nb_A1'][idx]})"
+                    lrMethod2 = f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][NbHybrid-1]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][NbHybrid-1]})"
+                    key = tuple(Hybrid_funcs + ["Hybrid"])
+                    if key not in copy_keys:
+                        copy_keys[lrMethod2] = key
                     idx += 1
+                elif lrMethod != "SBRD": #self.config["num_lrmethod"]!=0:
+                    key = lrMethod
+                    if key not in copy_keys:
+                        copy_keys[lrMethod] = (key)
 
+                    lrMethod2 = rf"{lrMethod} -- $\eta={self.config["Learning_rates"][idxMthd]}$"
+                    #print(f"lrMethod2:{lrMethod2}")
+                    idx += 1
 
                 game_set = GameKelly(n, price, eps, delta, alpha, tol)
                 Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
-                    lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
+                    lrMethod, a_vector, c_vector, d_vector, T, self.config["Learning_rates"][idxMthd], bid0,
                     vary=lr_vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
                 )
-
                 SocialWelfare = Welfare[0]
                 Distance2optSW = 1 / n * torch.abs(SW_opt - Welfare[0])
+                Pareto_check =   (Welfare[2] -Valuation_log_opt*torch.ones_like(Welfare[2]) ) + (z_sol_equ*torch.ones_like(Bids[0]) - Bids[0])
                 LSW = Welfare[1]
                 Relative_Efficienty_Loss = (SocialWelfare - SW_opt)/SW_opt
+
 
                 # --- Prepare one simulation result ---
                 sim_result = {
@@ -115,6 +129,7 @@ class SimulationRunner:
                     'Dist_To_Optimum_SW': Distance2optSW.detach().numpy(),
                     'Relative_Efficienty_Loss': Relative_Efficienty_Loss.detach().numpy(),
                     'Bid': Bids[0].detach().numpy(),
+                    "Pareto": Pareto_check.detach().numpy(),
                     'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
                     'Avg_Bid': Bids[1].detach().numpy(),
                     'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
@@ -127,6 +142,7 @@ class SimulationRunner:
                 }
 
                 # --- Accumulate for averaging ---
+
                 if lrMethod2 not in self.results["methods"]:
                     # Initialize lists to store multiple runs
                     self.results["methods"][lrMethod2] = {k: [v] for k, v in sim_result.items()}
@@ -140,13 +156,66 @@ class SimulationRunner:
             # Mise à jour compteur i/N
             status_text.text(f"Simulation {i + 1}/{self.config["Nb_random_sim"]}")
         # --- After loop: compute averages ---
-        for method, metrics in self.results["methods"].items():
+        # --- After loop: compute averages ---
+        idxHybrid = 0
+        self.results_copy = self.results.copy()
+
+        # 🔑 on fige les éléments dans une liste pour éviter le RuntimeError
+        for method, metrics in list(self.results_copy["methods"].items()):
+
+            # Vérifier si la méthode est hybride
+            is_hybrid = False
+            if method in copy_keys:
+                keys = copy_keys[method]
+                if keys[-1] == "Hybrid":
+                    is_hybrid = True
+
             for k, v_list in metrics.items():
-                try:
-                    self.results["methods"][method][k] = np.mean(np.stack(v_list), axis=0)
-                except Exception:
-                    # For scalars (like convergence_iter or final_bids)
+                # Cas scalaires (pas des tableaux)
+
+                if k in ["convergence_iter"]:
                     self.results["methods"][method][k] = np.mean(v_list)
+
+                else:
+
+                    mean_val = np.mean(np.stack(v_list), axis=0)
+                    self.results["methods"][method][k] = mean_val
+
+
+                try:
+
+                    if is_hybrid :#and len(self.config["selected_methods"])==1:
+
+
+                        # Construire un nom plus clair pour l’hybride
+                        eta_val = self.config["Learning_rates"][idxHybrid]
+                        key_name = rf"{keys[1]} -- $\eta={eta_val}$"
+                        if key_name not in self.results["methods"]:
+                            self.results["methods"][key_name] = {}
+
+                        if k not in self.results["methods"][key_name]:
+                            self.results["methods"][key_name][k] = []
+
+                        # Ajouter la dernière valeur de la courbe
+
+                        if k in ["convergence_iter"]:
+                            self.results["methods"][key_name][k] = np.mean(v_list)
+                        else:
+                            self.results["methods"][key_name][k].append(mean_val[-1])
+
+                    #else:
+                    #    print(f" np.mean(v_list){ np.mean(v_list)}")
+                    #    self.results["methods"][method][k] = np.mean(v_list)
+
+                except Exception:
+                    print()
+
+                    #self.results["methods"][method][k] = np.mean(v_list)
+
+            if is_hybrid:
+                idxHybrid += 1  # ⚡ n’incrémenter que si c’est un hybride
+            #print(k, self.results["methods"][method][k])
+
         return self.results
 
 

@@ -6,17 +6,17 @@ SIMULATION_CONFIG = {
     "n": 10,  # Number of players in the game
     "eta": 0.5,  # Step size for the learning update
     "price": 1.0,  # Price parameter in the game (can represent a resource price)
-    "a": 1000,  # Parameter for the utility function heterogeneity (a_i)
+    "a": 100,  # Parameter for the utility function heterogeneity (a_i)
     "a_min": 1,
     "mu": 0,  # Exponent controlling the heterogeneity of the c_vector
-    "c": 4000,  # Constant part of the c_vector
+    "c": 400,  # Constant part of the c_vector
     "delta": 0.1,  # Delta parameter (could model uncertainty, slack, or safety margin)
     "epsilon": 1,  # Regularization term (to avoid division by zero, for stability)
     "Nb_random_sim": 1,
     "Players2See": [1],
     "tol": 1e-5,  # Tolerance threshold for considering the game as converged
     "lr_vary": False,  # Learning rate vary or not
-    "var_init": 100,
+    "var_init": 10,
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
     "x_label": "Time step (t)",  # Label for the x-axis in the output plot
     "metric": "SW",  # "Speed" or "lpoa",or "LSW" , "Bid", "utility", "Dist-2-Opt-SW"
