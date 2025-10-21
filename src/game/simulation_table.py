@@ -38,6 +38,7 @@ def run_simulation_table_avg(config, GameKelly):
     # Réinitialiser les placeholders
     progress_bar = st.progress(0)
     status_text = st.empty()
+
     for sim_gamma, gamma in enumerate(list_gamma):
         results[gamma] = {}
         for n in list_n:
@@ -47,14 +48,17 @@ def run_simulation_table_avg(config, GameKelly):
             c_vector = torch.tensor([max(c - i * mu, epsilon) for i in range(n)], dtype=torch.float64)
             dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
             d_vector = 0.7 * dmin * 0
-
             idx = 0
+            bid0 = (c - epsilon) * torch.rand(n) + epsilon
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
                 copy_keys={}
                 for sim in range(Nb_random_sim):
                     eps = epsilon * torch.ones(n)
-                    bid0 = bid0 = (c - epsilon) * torch.rand(n) + epsilon
+
+                    if not config["keep_initial_bid"]:
+                        bid0 = (c - epsilon) * torch.rand(n) + epsilon
+
                     Hybrid_funcs, Hybrid_sets = [], []
 
                     lrMethod2 = lrMethod
@@ -79,15 +83,18 @@ def run_simulation_table_avg(config, GameKelly):
                         if key not in copy_keys:
                             copy_keys[lrMethod] = (key)
 
-                        lrMethod2 = rf"{lrMethod} -- $\eta={config["Learning_rates"][idxMthd]}$"
+                        #lrMethod2 = rf"{lrMethod} -- $\eta={config["Learning_rates"][idxMthd]}$"
                         # print(f"lrMethod2:{lrMethod2}")
                         idx += 1
 
-                    game_set = GameKelly(n, price, eps, delta, alpha, tol)
+                    game_set = GameKelly(n, price, torch.tensor(epsilon), delta, alpha, tol)
+
                     Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
                         lrMethod, a_vector, c_vector, d_vector, T, config["Learning_rates"][idxMthd], bid0,
                         vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
                     )
+
+
                     min_error = torch.min(error_NE_set)
                     nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
@@ -132,12 +139,7 @@ def display_results_streamlit_dict(results, config, save_path=None):
                 # Handle hybrid method labels if present
                 #method_keys = [k for k in results[gamma][n].keys() if method in k] if method == "Hybrid" else [method]
                 metric = results[gamma][n][method]
-                #if method_keys:
-                #    metric = np.mean([results[gamma][n][k] for k in method_keys])
-                #else:
-                #    metric = "---"
 
-                # Format ∞
                 if isinstance(metric, float) and np.isinf(metric):
                     metric_str = f"<{config["T"]}"#"∞"
                 else:

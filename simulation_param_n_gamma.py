@@ -72,8 +72,8 @@ def run_simulation_n_gamma(config, GameKelly):
                 for sim in range(Nb_random_sim):
                     eps = epsilon * torch.ones(n)
                     bid0 = (c - epsilon) * torch.rand(n) + a
-
-                    game = GameKelly(n, price, eps, delta, alpha, tol)
+                    print(epsilon)
+                    game = GameKelly(n, price, epsilon, delta, alpha, tol)
                     Bids, Welfare, Utility_set, error_NE_set = game.learning(
                         lrMethod, a_vector, c_vector, d_vector, T, eta, bid0,
                         vary=config["lr_vary"], Hybrid_funcs=None, Hybrid_sets=None, stop=True
@@ -98,7 +98,7 @@ def run_simulation_n_gamma(config, GameKelly):
                 averaged_metrics = {}
                 for k, v_list in metrics_accumulator.items():
                     try:
-                        print(f"v_list:{v_list}")
+                        #print(f"v_list:{v_list}")
                         averaged_metrics[k] = np.mean(v_list)
                     except Exception:
                         averaged_metrics[k] = np.mean(v_list)

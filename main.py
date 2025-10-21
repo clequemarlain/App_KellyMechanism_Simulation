@@ -53,14 +53,6 @@ class SimulationRunner:
         SW_opt = (torch.sum(Valuation_log_opt))
         LSW_opt = torch.sum(torch.minimum(Valuation_log_opt, c_vector)).detach().numpy()
 
-        self.results = {
-            'methods': {},
-            'optimal': {
-                'LSW': LSW_opt,
-                'SW': SW_opt,
-                'x_opt': x_log_optimum.detach().numpy()
-            }
-        }
 
         # Réinitialiser les placeholders
         progress_bar = st.progress(0)
@@ -69,6 +61,26 @@ class SimulationRunner:
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
             "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True,
         )
+        z_ne =  Bids_Opt[0][-1]
+        x_ne = z_ne/(torch.sum(z_ne) + self.config["delta"])
+        Valuation_ne = Valuation(x_ne, a_vector, d_vector, alpha)
+        SW_ne = (torch.sum(Valuation_ne))
+        Potential_ne = log_potential(z_ne,a_vector,price)
+        Residual_ne = error_NE_set_Opt[-1]
+        self.results = {
+            'methods': {},
+            'optimal': {
+                'LSW': LSW_opt,
+                'SW': SW_opt,
+                'SW_NE': SW_ne,
+                'x_opt': x_log_optimum.detach().numpy(),
+                'z_ne' : z_ne,
+                'x_ne' : x_ne,
+                "Potential_ne":  Potential_ne.detach().numpy(),
+                "Residual_ne" : Residual_ne.detach().numpy(),
+            }
+        }
+
         for i in range(self.config["Nb_random_sim"]):
             if not self.config["keep_initial_bid"]:
                 if self.config["Random_Initial_Bid"]:
@@ -80,6 +92,12 @@ class SimulationRunner:
             NbHybrid = 0
 
             copy_keys ={}
+            Global_Hybrids_set = []
+            if "Hybrid" in lrMethods:
+                for percent in self.config["Nb_A1"][:self.config["num_hybrids"]]:
+                    Global_Hybrids_set.append(make_subset(self.config["n"],percent))
+
+            #print(f"Global_Hybrids_set:{Global_Hybrids_set}")
             for idxMthd, lrMethod in enumerate(lrMethods):
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
@@ -92,10 +110,12 @@ class SimulationRunner:
                    # if self.config["Random_set"] and NbHybrid == 1:
                    #     Hybrid_sets = [subset, remaining]
                     #else:
-                    Hybrid_sets = self.config["Hybrid_sets"][NbHybrid-1]
+                    Hybrid_sets = Global_Hybrids_set[(NbHybrid-1)%self.config["num_hybrids"]]#make_subset(self.config["n"],NbHybrid)# self.config["Hybrid_sets"][NbHybrid-1]
                     Hybrid_funcs = self.config["Hybrid_funcs"][NbHybrid-1]
+                    #print(NbHybrid)
+                    if self.config["num_hybrid_set"]>=1 and self.config["num_hybrids"]>1:
 
-                    lrMethod2 = f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][NbHybrid-1]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][NbHybrid-1]})"
+                        lrMethod2 = f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][NbHybrid-1]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][NbHybrid-1]})"
                     key = tuple(Hybrid_funcs + ["Hybrid"])
                     if key not in copy_keys:
                         copy_keys[lrMethod2] = key
@@ -105,7 +125,7 @@ class SimulationRunner:
                     if key not in copy_keys:
                         copy_keys[lrMethod] = (key)
 
-                    lrMethod2 = rf"{lrMethod} -- $\eta={self.config["Learning_rates"][idxMthd]}$"
+                    lrMethod2 = rf"{lrMethod}"# -- $\eta={self.config["Learning_rates"][idxMthd]}$"
                     #print(f"lrMethod2:{lrMethod2}")
                     idx += 1
 
@@ -118,7 +138,7 @@ class SimulationRunner:
                 Distance2optSW = 1 / n * torch.abs(SW_opt - Welfare[0])
                 Pareto_check =   (Welfare[2] -Valuation_log_opt*torch.ones_like(Welfare[2]) ) + (z_sol_equ*torch.ones_like(Bids[0]) - Bids[0])
                 LSW = Welfare[1]
-                Relative_Efficienty_Loss = (SocialWelfare - SW_opt)/SW_opt
+                Relative_Efficienty_Loss = torch.abs((SocialWelfare - SW_opt)/SW_opt) * 100
 
 
                 # --- Prepare one simulation result ---
@@ -133,10 +153,11 @@ class SimulationRunner:
                     'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
                     'Avg_Bid': Bids[1].detach().numpy(),
                     'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
-                    'Utility': Utility_set[0].detach().numpy(),
+                    'Payoff': Utility_set[0].detach().numpy(),
                     'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
-                    'Avg_Utility': Utility_set[1].detach().numpy(),
-                    'Res_Utility': Utility_set[2].detach().numpy(),
+                    'Avg_Payoff': Utility_set[1].detach().numpy(),
+                    'Res_Payoff': Utility_set[2].detach().numpy(),
+                    'Potential': Utility_set[3].detach().numpy(),
                     'final_bids': Bids[0][-1].detach().numpy(),
                     'convergence_iter': torch.argmin(error_NE_set).item() if torch.min(error_NE_set) <= tol else T
                 }
@@ -167,7 +188,7 @@ class SimulationRunner:
             is_hybrid = False
             if method in copy_keys:
                 keys = copy_keys[method]
-                if keys[-1] == "Hybrid":
+                if keys[-1] == "Hybrid" and self.config["num_hybrid_set"]>=1 and self.config["num_hybrids"]>1:
                     is_hybrid = True
 
             for k, v_list in metrics.items():
@@ -180,6 +201,8 @@ class SimulationRunner:
 
                     mean_val = np.mean(np.stack(v_list), axis=0)
                     self.results["methods"][method][k] = mean_val
+                   # print(k,self.results["methods"][method][k])
+
 
 
                 try:
@@ -189,7 +212,7 @@ class SimulationRunner:
 
                         # Construire un nom plus clair pour l’hybride
                         eta_val = self.config["Learning_rates"][idxHybrid]
-                        key_name = rf"{keys[1]} -- $\eta={eta_val}$"
+                        key_name = rf"{keys[1]}"# -- $\eta={eta_val}$"
                         if key_name not in self.results["methods"]:
                             self.results["methods"][key_name] = {}
 

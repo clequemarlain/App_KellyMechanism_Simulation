@@ -1,5 +1,5 @@
 import numpy as np
-import torch
+import torch, random
 from scipy import optimize
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
@@ -57,7 +57,47 @@ MARKERS_METHODS = {
 
 markers = ["H", "d","*","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 markers22 = ["H", "d","*","p"]
+def make_subset(n, h):
+    """
+    Retourne un couple [subset, remaining] basé sur n et h.
+    subset contient toujours 0 + (h-1) autres éléments tirés au hasard.
+    remaining contient les éléments restants.
 
+    Parameters
+    ----------
+    n : int
+        Taille totale (cfg["n"])
+    h : int
+        Taille du sous-ensemble incluant 0
+
+    Returns
+    -------
+    subset : list
+        Sous-ensemble contenant 0
+    remaining : list
+        Eléments restants
+    """
+    if n <= 0:
+        raise ValueError("n doit être > 0")
+    if h < 1:
+        raise ValueError("h doit être >= 1 car subset contient toujours 0")
+
+    # candidats possibles pour compléter subset (exclure 0)
+    candidates = list(set(range(n)) - {0, 1})
+
+    # éviter erreur random.sample si h est trop grand
+    h_effective = max(0, min(h - 1, len(candidates)))
+
+    # tirer h-1 éléments aléatoires parmi les candidats
+    others = random.sample(candidates, h_effective)
+
+    # Construire subset
+    subset = [0] + others
+
+    # éléments restants
+    remaining = [i for i in range(n) if i not in subset]
+
+    return [subset, remaining]
 def solve_quadratic(n, a, delta):
     delta = torch.tensor(delta)
     a = torch.tensor(a)
@@ -201,9 +241,68 @@ def Valuation(x, a_vector, d_vector, alpha):
 def Payoff(x, z, a_vector, d_vector, alpha, price):
     U = Valuation(x, a_vector, d_vector, alpha) - price*z
     return U
+def log_potential(
+    z: torch.Tensor,
+    a: torch.Tensor,
+    price: float | int | torch.Tensor,
+    mode: str = "auto",
+) -> torch.Tensor:
+    """
+    Compute the log-case potential for the bidding game with shares x_i = z_i / sum_j z_j.
+
+    Modes:
+      - "exact":    uses Φ_ex = a * sum log z - a * log(sum z) - price * sum z
+                    (valid when all a_i are equal to the same a > 0)
+      - "weighted": uses Φ_w  = sum log z - log(sum z) - price * sum (z_i / a_i)
+                    (weighted potential for heterogeneous a_i > 0)
+      - "auto":     if all a_i are (numerically) equal -> exact; else -> weighted
+
+    Args:
+        z   : (n,) tensor, bids (must be > 0 for log)
+        a   : (n,) tensor of positive a_i
+        price: scalar (float/int/tensor)
+        mode: "auto" | "exact" | "weighted"
+        eps : small clamp to keep logs stable
+
+    Returns:
+        Scalar tensor (0-dim): the potential value.
+    """
+    if z.ndim != 1 or a.ndim != 1:
+        raise ValueError("z and a must be 1-D tensors")
+    if z.shape != a.shape:
+        raise ValueError("z and a must have the same shape")
+    if (a <= 0).any():
+        raise ValueError("All entries of 'a' must be > 0")
+
+    #z = torch.clamp_min(z, eps)
+    S = z.sum()#torch.clamp_min(, eps)
+    price = torch.as_tensor(price, dtype=z.dtype, device=z.device)
+
+    # Decide mode
+    if mode == "auto":
+        a0 = a[0]
+        if torch.allclose(a, a0.expand_as(a), rtol=1e-6, atol=1e-8):
+            mode_eff = "exact"
+        else:
+            mode_eff = "weighted"
+    else:
+        mode_eff = mode.lower()
+        if mode_eff not in {"exact", "weighted"}:
+            raise ValueError("mode must be 'auto', 'exact', or 'weighted'")
+
+    if mode_eff == "exact":
+        a0 = a[0]
+        # (Optionally enforce equality)
+        if not torch.allclose(a, a0.expand_as(a), rtol=1e-6, atol=1e-8):
+            raise ValueError("Exact potential requires all a_i equal; use mode='weighted' or 'auto'.")
+        potential = a0 * torch.log(z).sum() - a0 * torch.log(S) - price * z.sum()
+    else:  # weighted
+        potential = torch.log(z).sum() - torch.log(S) - price * (z / a).sum()
+
+    return potential
 
 def SW_func(x, budgets, a_vector, d_vector, alpha):
-    V = a_vector * V_func(x, alpha)
+    V = a_vector * V_func(x, alpha) + d_vector
     sw = torch.sum(V)
     return sw
 
@@ -241,7 +340,8 @@ def compute_G(a_i, delta, epsilon,c, n):
     smax = n * c + delta
     term_main = a_i * (1 / epsilon) + 1
     term_others = (n - 1) * (a_i / (n*epsilon + delta)) ** 2 *0
-    G = np.sqrt(term_main ** 2 + term_others)
+    #G = np.sqrt(term_main ** 2 + term_others)
+    #print("gdgdgdgdgd",(abs(a_i*smax/(epsilon *(epsilon+smax)) - 1),abs(a_i*smin/(epsilon *(epsilon+smin)) - 1)))
     G = max(abs(a_i*smax/(epsilon *(epsilon+smax)) - 1), abs(a_i*smin/(epsilon *(epsilon+smin)) - 1))
     return G
 
@@ -389,7 +489,7 @@ class GameKelly:
         if vary:
             eta_t = 1 / (t ** eta) if t > 0 else eta
         else:
-            eta_t = eta
+            eta_t = D / (G * np.sqrt(self.T))
         z_candidate = bids + eta_t * grad_t
         z_t = Q1(z_candidate, self.epsilon, c_vector, self.price)
         return z_t, acc_grad
@@ -419,9 +519,9 @@ class GameKelly:
         # Step-size (theorem 3.1 Hazan)
         if vary:
             # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(t)) if t > 0 else eta
+            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
         else:
-            eta_t = eta  # fallback pour t=0
+            eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
 
         # Update rule
         z_candidate = bids + eta_t * grad_t
@@ -429,7 +529,7 @@ class GameKelly:
 
         return z_t, acc_grad
 
-    def DAQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def DAQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -446,16 +546,15 @@ class GameKelly:
         a_i = torch.max(a_vector)
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
         if vary:
         # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(t)) if t > 0 else eta
+            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
         else:
-            eta_t = eta  # fallback pour t=0
+            eta_t =  D / (G * np.sqrt(self.T))  #self.T fallback pour t=0
 
-        if t%200==0:
-            print(f"eta_t :{eta_t}")
+
         acc_grad_copy += grad_t * eta_t
         z_t = Q1(acc_grad_copy, self.epsilon, c_vector, self.price)
         return z_t, acc_grad_copy
@@ -479,15 +578,16 @@ class GameKelly:
         a_i = torch.max(a_vector)
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G_DAE(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            #G[i] = compute_G_DAE(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
 
         # Step-size (theorem 3.1 Hazan)
         if vary:
             # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(t)) if t > 0 else eta
+            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
         else:
-            eta_t = eta  # fallback pour t=0
+            eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
         acc_grad_copy += grad_t * eta_t
         z_t = Q2(acc_grad_copy, self.epsilon, c_vector, self.price)
 
@@ -534,29 +634,27 @@ class GameKelly:
     def learning(self, func, a_vector, c_vector, d_vector, n_iter: int, eta, bids, vary: bool = False, stop=False, Hybrid_funcs=None, Hybrid_sets=None):
         func = getattr(self, func)
 
+        self.T = n_iter
 
         acc_grad = torch.zeros(self.n, dtype=torch.float64)
         matrix_bids = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
-       # agg_bids = matrix_bids.clone()
         vec_LSW = torch.zeros(n_iter + 1, dtype=torch.float64)
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
+        potential = vec_SW.clone()
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         utiliy_residual = utiliy.clone()
         valuation = utiliy.clone()
-        #agg_utility = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         error_NE = torch.zeros(n_iter + 1, dtype=torch.float64)
         matrix_bids[0] = bids.clone()
-       # agg_bids[0] = bids.clone()
         error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
         utiliy[0] = Payoff(self.fraction_resource(matrix_bids[0]), matrix_bids[0], a_vector, d_vector, self.alpha, self.price)
         valuation[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)
-        #agg_utility[0] = utiliy[0].clone()
         vec_LSW[0] = LSW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
         vec_SW[0] = SW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
         z_br = BR_alpha_fair(self.epsilon, c_vector, matrix_bids[0], torch.sum(matrix_bids[0]) - matrix_bids[0] + self.delta, a_vector, self.delta, self.alpha, self.price,
                              b=0)
         utiliy_residual[0] = torch.abs(utiliy[0] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
-
+        potential[0] =  log_potential(matrix_bids[0],a_vector,self.price)
 
         k = 0
 
@@ -574,7 +672,7 @@ class GameKelly:
             utiliy[t] = Payoff(self.fraction_resource(matrix_bids[t]), matrix_bids[t], a_vector, d_vector, self.alpha, self.price)
             utiliy_residual[t] = (utiliy[t] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
             valuation[t] = Valuation(self.fraction_resource(matrix_bids[t]), a_vector, d_vector, self.alpha)
-            #agg_utility[t] = agg_utility[t-1] +  1/(t+1) * utiliy[t]
+            potential[t] =  log_potential(matrix_bids[t],a_vector,self.price)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             #agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
             if stop and err <= self.tol:
@@ -587,7 +685,7 @@ class GameKelly:
 
         agg_utility = agg_utility / col.unsqueeze(1).expand(-1,self.n)
 
-        Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :]]
+        Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :], potential[:k]]
 
         Welfare = [vec_SW[:k], vec_LSW[:k], valuation[:k]]
         return Bids, Welfare, Utility_set, torch.maximum(error_NE[:k],torch.tensor(self.tol))  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
@@ -610,8 +708,8 @@ def plotGame(config,
     # --- Plot curves ---
     l=0
     for i, legend in enumerate(legends):
-        color = "red" if legends[i] == "Optimal" else colors[i]
-        marker = "" if legends[i] ==  "Optimal" else markers[i]
+        color = "red" if legends[i] == "NE" else colors[i]
+        marker = "" if legends[i] ==  "NE" else markers[i]
         try:
             if config["lrMethods"][i] in METHODS:
 
@@ -628,28 +726,32 @@ def plotGame(config,
                 l+=1
         except:
             print()
-
+        y_data_i = y_data[i][:config["T_plot"]]
+        x_data_i = x_data[:config["T_plot"]]
         plt.plot(
-            x_data[::step],
-            (y_data[i])[::step],
+            x_data_i[::step],
+            y_data_i[::step],
             linestyle=linestyle,
             linewidth=linewidth,
             marker=marker,
-            markersize=1 * markersize,
+            markersize=1.25 * markersize,
             color=color,
             label=f"{legend}",
             markeredgecolor="black",
         )
 
         if pltText:
-            last_x = x_data[-1]
+            last_x = x_data_i[-1]
             #if config["lrMethods"][i]=="OGD":
             #    last_y =8.32e-2
             #else:
-            last_y = y_data[i][-1]
+            last_y = y_data_i[-1]
+            lastValue = f"{last_y:.2e}"
+            if config.get("metric", "") == "Relative_Efficienty_Loss":
+                lastValue = f"{last_y:.3f}%"
             plt.text(
                 last_x, last_y,
-                f"{last_y:.2e}",
+                lastValue,
                 fontweight="bold",
                 fontsize=fontsize,
                 bbox=dict(facecolor='white', alpha=0.7),
@@ -666,15 +768,18 @@ def plotGame(config,
 
 
     # --- Save plot without legend ---
-    figpath_plot = f"{saveFileName}_plot.pdf"
-    plt.savefig(figpath_plot, format="pdf")
+    #figpath_plot = f"{saveFileName}_plot.pdf"
+    #plt.savefig(figpath_plot, format="pdf")
 
     if l==len(legends):
         ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
-    plt.legend(frameon=False,prop={'weight': 'bold'})
+    plt.legend(frameon=False, prop={'weight': 'bold'})
     plt.grid(True)
     plt.tight_layout()
 
@@ -684,9 +789,9 @@ def plotGame(config,
 
     # --- Build legend handles ---
     legend_handles = [
-        Line2D([0], [0], color=("red" if legends[k] == "Optimal" else  COLORS_METHODS[legends[k]] if legends[k] in METHODS else colors[k]),
+        Line2D([0], [0], color=("red" if legends[k] == "NE" else  COLORS_METHODS[legends[k]] if legends[k] in METHODS else colors[k]),
                markeredgecolor="black", linestyle=linestyle if linestyle != "" else "-",
-               marker=("" if legends[k] == "Optimal" else MARKERS_METHODS[legends[k]] if legends[k] in METHODS else markers[k] ),
+               marker=("" if legends[k] == "NE" else MARKERS_METHODS[legends[k]] if legends[k] in METHODS else markers[k] ),
                markersize=markersize, linewidth=linewidth)
         for k in range(len(legends))
     ]
@@ -716,8 +821,8 @@ def plotGame(config,
     ax_zoom = fig_zoom.add_subplot(111)
 
     for i in range(len(legends)-1):
-        color = "red" if legends[i] == "Optimal" else colors[i]
-        marker = "" if legends[i] ==  "Optimal" else markers[i]
+        color = "red" if legends[i] == "NE" else colors[i]
+        marker = "" if legends[i] ==  "NE" else markers[i]
         if legends[i] in METHODS:
             color = COLORS_METHODS[legends[i]]
             marker = MARKERS_METHODS[legends[i]]
@@ -776,158 +881,192 @@ def plotGame(config,
     plt.close(fig_zoom)
 
     return figpath_plot, figpath_legend, figpath_zoom
+
+
 def plotGame_dim_N(
+    config,
     x_data, y_data, x_label, y_label, legends, saveFileName,
     ylog_scale, Players2See=[1,2], fontsize=40, markersize=40, linewidth=12, linestyle="-",
     pltText=False, step=1
 ):
+    """
+    Trace, sauvegarde le plot principal + la légende séparée + un zoom sur les 5 derniers points.
+    Hypothèse de shape : y_data[i] a la forme (T, n_players).
+    - NE : trait horizontal (unique).
+    - METHODS/COLORS_METHODS/MARKERS_METHODS, colors, markers : globaux optionnels (fallbacks auto).
+    """
+
+    # --- Fallbacks style si non définis globalement ---
+    global METHODS, COLORS_METHODS, MARKERS_METHODS, colors, markers
+    if 'METHODS' not in globals(): METHODS = set(legends)
+    if 'COLORS_METHODS' not in globals(): COLORS_METHODS = {}
+    if 'MARKERS_METHODS' not in globals(): MARKERS_METHODS = {}
+    if 'colors' not in globals():
+        colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]
+    if 'markers' not in globals():
+        markers = ["o","s","D","^","v","<",">","P","X","*"]
+
+    # --- Préparation données ---
+    y_data = np.array(y_data, dtype=object)
+    Tm = min(config.get("T_plot", len(x_data)), len(x_data))
+    x_data_i = np.array(x_data[:Tm])
+
+    # --- Figure principale ---
     plt.figure(figsize=(18, 12))
-    y_data = np.array(y_data)
-
     plt.rcParams.update({'font.size': fontsize})
+    if ylog_scale: plt.yscale("log")
 
-    linestyles = ["-", "--", ":", "--"]
-
-    if ylog_scale:
-        plt.yscale("log")
-
-    # --- Plot curves ---
     legend_handles = []
-    legends2 = []
-    for i in range(len(legends)):
-        color = (
-            "red" if legends[i] == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else
-            colors[
-                i])
-        #n = y_data[i].shape[1]
+    legend_labels  = []
+
+    # Plot des méthodes (sauf NE)
+    for i, name in enumerate(legends):
+        is_NE = (name == "NE")
+        if is_NE:
+            continue
+
+        color = COLORS_METHODS.get(name, colors[i % len(colors)])
+        marker_series = MARKERS_METHODS.get(name, None)
+
+        # Handle multi-joueurs à tracer
+        Yi = np.array(y_data[i], dtype=float)[:Tm]   # (T, n_players)
 
         for j in Players2See:
-            legends2.append(f"{legends[i]} -- Player {j+1}" if legends[i] in METHODS else legends[i])
-            # --- Build legend handles ---
-            legend_handles.append(
-                Line2D([0], [0], color=color
-                       , marker=markers[j], markersize=markersize, markeredgecolor="black", linestyle=linestyle,
-                       linewidth=linewidth)
-        )
-            #print(y_data)
+            # style joueur (priorité au marker méthode, sinon marker joueur)
+            marker = marker_series if marker_series else markers[j % len(markers)]
+
             plt.plot(
-                x_data[::step],
-                (y_data[i])[:, j][::step],
+                x_data_i[::step],
+                Yi[:, j][::step],
                 linestyle=linestyle,
                 linewidth=linewidth,
-                marker=markers[j],
-                markersize=2*markersize,
+                marker=marker,
+                markersize=1.25*markersize,
                 color=color,
                 markeredgecolor="black",
+                label=name  # label utilisé uniquement si legend() sans handles; on fournit handles plus bas
             )
 
+            # Handle dédié pour la légende séparée
+            legend_handles.append(
+                Line2D(
+                    [0], [0], color=color, marker=marker,
+                    markersize=markersize, markeredgecolor="black",
+                    linestyle=linestyle, linewidth=linewidth
+                )
+            )
+            legend_labels.append(f"{name} — Player {j+1}")
+
             if pltText:
-                last_x = len((y_data[i])[:, j]) - 1
-                last_y = (y_data[i])[:, j][-1]
+                last_x, last_y = x_data_i[-1], Yi[-1, j]
                 plt.text(
-                    last_x, last_y,
-                    f"{last_y:.2e}",
-                    fontweight="bold",
-                    fontsize=fontsize,
-                    bbox=dict(facecolor='white', alpha=0.7),
-                    verticalalignment='bottom', horizontalalignment='right'
+                    last_x, last_y, f"{last_y:.2e}",
+                    fontweight="bold", fontsize=fontsize,
+                    bbox=dict(facecolor="white", alpha=0.7),
+                    va="bottom", ha="right"
                 )
 
-    # --- Axis formatting ---
-    for label in plt.gca().get_xticklabels() + plt.gca().get_yticklabels():
-        label.set_fontweight("bold")
+    # NE (trait horizontal unique)
+    if "NE" in legends:
+        try:
+            idx_ne = legends.index("NE")
+            Yi_ne = np.array(y_data[idx_ne], dtype=float)
+            # on prend la médiane des dernières valeurs (robuste si NE varie faiblement)
+            if Yi_ne.ndim == 2:
+                ne_val = float(np.median(Yi_ne[:Tm]))
+            elif Yi_ne.ndim == 1:
+                ne_val = float(np.median(Yi_ne[:Tm]))
+            else:
+                ne_val = float(Yi_ne)  # fallback si c'est un scalaire
+            plt.axhline(y=ne_val, color="red", linestyle=linestyle, linewidth=linewidth, label="NE")
+            if pltText:
+                plt.text(
+                    x_data_i[-1], ne_val, f"{ne_val:.2e}",
+                    fontweight="bold", fontsize=fontsize,
+                    bbox=dict(facecolor="white", alpha=0.7),
+                    va="bottom", ha="right"
+                )
+            # handle NE pour la légende séparée
+            legend_handles.append(
+                Line2D([0], [0], color="red", marker="", linestyle=linestyle, linewidth=linewidth)
+            )
+            legend_labels.append("NE")
+        except Exception as e:
+            print(f"[plotGame_dim_N] NE non tracé ({e}).")
 
-    plt.ylabel(f"{y_label}", fontweight="bold")
-    plt.xlabel(f"{x_label}", fontweight="bold")
+    # Axes / labels / mise en forme
+    ax = plt.gca()
+    for lab in ax.get_xticklabels() + ax.get_yticklabels():
+        lab.set_fontweight("bold")
+    plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
+    plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
+    plt.legend(frameon=False, prop={'weight': 'bold'})
     plt.grid(True)
     plt.tight_layout()
 
-    # --- Save plot without legend ---
+    # Sauvegarde du plot principal
     figpath_plot = f"{saveFileName}_plot.pdf"
     plt.savefig(figpath_plot, format="pdf")
 
+    # --- Légende séparée ---
+    rows = max(1, len(Players2See))                  # ex: 2
+    n_items = len(legend_labels)
+    ncol = int(np.ceil(n_items / rows)) if n_items else 1
 
-
-    # --- Save legend separately ---
-    rows = len(Players2See)  # ✅ always 2 rows
-    n_items = len(legends2)
-    ncol = int(np.ceil(n_items / rows))  # répartir équitablement
-    fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
-    ax = fig_legend.add_subplot(111)
-    ax.axis("off")
-
-    ax.legend(
-        legend_handles,
-        legends2,
-        frameon=True,
-        facecolor="white",
-        edgecolor="black",
+    fig_legend = plt.figure(figsize=(12, 2))
+    ax_leg = fig_legend.add_subplot(111)
+    ax_leg.axis("off")
+    ax_leg.legend(
+        legend_handles, legend_labels,
+        frameon=True, facecolor="white", edgecolor="black",
         prop={"weight": "bold", "size": fontsize},
-        ncol=ncol,#len(legends2),  # ✅ all items on one line
-        loc="center",  # ✅ centered in the figure
-        bbox_to_anchor=(0.5, 0.5)
+        ncol=ncol, loc="center", bbox_to_anchor=(0.5, 0.5)
     )
-
     figpath_legend = f"{saveFileName}_legend.pdf"
     fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
     plt.close(fig_legend)
 
-
+    # --- Zoom sur les 5 derniers points (même style simple) ---
     fig_zoom = plt.figure(figsize=(18, 12))
     ax_zoom = fig_zoom.add_subplot(111)
 
-    for i in range(len(legends)):
-        color = (
-            "red" if legends[i] == "Optimal"
-            else COLORS_METHODS[legends[i]] if legends[i] in METHODS
-            else colors[i]
-        )
-        n = y_data[i].shape[1]
+    k = min(5, Tm)
+    x_last = x_data_i[-k:]
 
+    for i, name in enumerate(legends):
+        if name == "NE":
+            continue
+        color = COLORS_METHODS.get(name, colors[i % len(colors)])
+        marker_series = MARKERS_METHODS.get(name, None)
+        Yi = np.array(y_data[i], dtype=float)[:Tm]
         for j in Players2See:
-            x_vals = x_data[-5:]  # 5 derniers x
-            y_vals = (y_data[i])[-5:, j]  # 5 derniers y
-
+            marker = marker_series if marker_series else markers[j % len(markers)]
+            y_last = Yi[-k:, j]
             ax_zoom.plot(
-                x_vals,
-                y_vals,
-                linestyle=linestyle,
-                linewidth=linewidth,
-                marker=markers[j],
-                markersize=2*markersize,
-                color=color,
-                markeredgecolor="black",
+                x_last, y_last,
+                linestyle=linestyle, linewidth=linewidth,
+                marker=marker, markersize=2*markersize,
+                color=color, markeredgecolor="black",
             )
-            last_x, last_y = x_vals[-1], y_vals[-1]
             ax_zoom.text(
-                last_x, last_y,
-                f"{last_y:.3e}",
-                fontweight="bold",
-                fontsize=80,
+                x_last[-1], y_last[-1], f"{y_last[-1]:.3e}",
+                fontweight="bold", fontsize=80,
                 bbox=dict(facecolor="white", alpha=0.7),
-                verticalalignment="bottom",
-                horizontalalignment="right"
+                va="bottom", ha="right"
             )
 
-    # même axes que principal (pas de zoom)
-    ax_zoom.set_xlim(x_data[-5], x_data[-1])
-    ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
-
-
-
-    for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
-        label.set_fontweight("bold")
-    ax_zoom.tick_params(axis="both", labelsize=2*markersize)
-    ax_zoom.set_ylabel("",fontweight="bold")
-    ax_zoom.yaxis.label.set_size(2*markersize)
-    ax_zoom.set_xlabel(f"", fontweight="bold")
+    # axes épurés pour le zoom
+    ax_zoom.axhline(y=ne_val, color="red", linestyle=linestyle, linewidth=linewidth, label="NE")
+    ax_zoom.set_xlim(x_last[0], x_last[-1])
 
     ax_zoom.set_xticks([])  # Supprime les graduations
+    ax_zoom.set_yticks([])  # Supprime les graduations
     ax_zoom.set_xlabel("")  # Supprime le label
-    ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
 
+    ax_zoom.spines["bottom"].set_visible(False)
     ax_zoom.spines["top"].set_visible(False)
-
+    for lab in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
+        lab.set_fontweight("bold")
     ax_zoom.grid(True)
     fig_zoom.tight_layout()
 
@@ -938,7 +1077,7 @@ def plotGame_dim_N(
     return figpath_plot, figpath_legend, figpath_zoom
 
 
-def plotGame_dim_N_last(
+def plotGame_Hybrid_last(config,
         x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
         ylog_scale=False, Players2See=[1, 2], fontsize=40,
         markersize=40, linewidth=12, linestyle="-",
@@ -946,26 +1085,24 @@ def plotGame_dim_N_last(
 ):
     plt.figure(figsize=(18, 12))
     #y_data = np.array(y_data, dtype=object)  # s'assurer que les sous-tableaux passent bien
-    y_data_Hybrid = y_data[0]
+    y_data_Hybrid = y_data
+
     plt.rcParams.update({'font.size': fontsize})
 
     if ylog_scale:
         plt.yscale("log")
 
     legend_handles = []
-    curves = []
+    try:
+        curves = list(map(list, zip(*y_data_Hybrid[0])))
+        curve_NE = [y_data[-1][-1][0]]
+    except Exception:
+        curves = y_data_Hybrid
+        curve_NE = [y_data[-1][-1]]
+
+
+
     funcNo_NE = [i for i in funcs_ if i!="NE"]
-
-    for j, fc in enumerate(funcs_):
-        curve = []
-
-
-        for i in range(len(y_data_Hybrid)):
-            #print(f"y_data_Hybrid{y_data_Hybrid[i]}")
-            curve.append((y_data_Hybrid[i][j]))
-        curves.append(
-            curve
-        )
 
 
     for j, fc in enumerate(funcs_):
@@ -987,13 +1124,13 @@ def plotGame_dim_N_last(
 
         if fc == "NE":
             # tracer une ligne horizontale rouge à la valeur k
-            print(y_data[-1][-1][0])
+            print()
 
         else:
             # tracer l’évolution (jusqu’à la dernière valeur)
 
             curve = curves[j]
-            print(f"{fc}", curve, x_data)
+
             plt.plot(
                 x_data,
                 curve,
@@ -1007,7 +1144,10 @@ def plotGame_dim_N_last(
             )
 
         if pltText:
-            plt.text(x_data[-1], curve[-1], f"{curve[-1]:.3f}",
+            lastValue = f"{curve[-1]:.2e}"
+            if config.get("metric", "") == "Relative_Efficienty_Loss":
+                lastValue = f"{curve[-1]:.3f}%"
+            plt.text(x_data[-1], curve[-1], lastValue,
                 fontweight="bold",
                 fontsize=fontsize,
                 bbox=dict(facecolor="white", alpha=0.7),
@@ -1018,9 +1158,11 @@ def plotGame_dim_N_last(
     # légendes et labels
 
     if funcs_[-1]== "NE":
-        curve = [y_data[-1][-1][0]]
+
+
+        #print(y_data[-1][-1][0])
         plt.axhline(
-            y=curve,
+            y=curve_NE,
             color="red",
             linestyle=linestyle,
             linewidth=linewidth,
@@ -1028,7 +1170,10 @@ def plotGame_dim_N_last(
         )
 
         if pltText:
-            plt.text(x_data[-1], curve[-1], f"{curve[-1]:.3f}",
+            lastValue = f"{curve_NE[-1]:.2e}"
+            if config.get("metric", "") == "Relative_Efficienty_Loss":
+                lastValue = f"{curve_NE[-1]:.3f}%"
+            plt.text(x_data[-1], curve_NE[-1], lastValue,
                      fontweight="bold",
                      fontsize=fontsize,
                      bbox=dict(facecolor="white", alpha=0.7),
@@ -1043,6 +1188,9 @@ def plotGame_dim_N_last(
 
    # ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # ✅ ticks entiers
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
@@ -1064,10 +1212,301 @@ def plotGame_dim_N_last(
     figpath_plot = f"{saveFileName}_plot.pdf"
     plt.savefig(figpath_plot, format="pdf")
 
+    x_min, x_max = config["x_zoom_interval"]
+
+    fig_zoom = plt.figure(figsize=(18, 12))
+    ax_zoom = fig_zoom.add_subplot(111)
+
+    for i,fc in enumerate(funcs_):
+        color = "red" if fc == "NE" else colors[j]
+        marker = "" if fc == "NE" else markers[j % len(markers)]
+        if fc in METHODS:
+            color = COLORS_METHODS[fc]
+            marker = MARKERS_METHODS[fc]
+        #n = y_data[i].shape[1]
+
+        if fc == "NE":
+            # tracer une ligne horizontale rouge à la valeur k
+            ax_zoom.axhline(
+                y=curve_NE,
+                color="red",
+                linestyle=linestyle,
+                linewidth=linewidth,
+                label=f"NE"
+            )
+
+        else:
+            x_vals = x_data[x_min-1:x_max]  # 5 derniers x
+            y_vals = curves[i][x_min - 1:x_max]
+            #print(x_vals,y_vals)
+            ax_zoom.plot(
+            x_vals,
+            y_vals,
+            linestyle=linestyle,
+            linewidth=linewidth,
+            marker=marker,
+            markersize=2.5*markersize,
+            color=color,
+            label=f"{legends[i]}",
+            markeredgecolor="black",
+            )
+            if pltText:
+                last_x, last_y = x_vals[-1], y_vals[-1]
+                ax_zoom.text(
+                    last_x, last_y,
+                    f"{last_y:.3e}",
+                    fontweight="bold",
+                    fontsize=2*markersize,
+                    bbox=dict(facecolor="white", alpha=0.7),
+                    verticalalignment="bottom",
+                    horizontalalignment="right"
+                )
+
+    # même axes que principal (pas de zoom)
+   # ax_zoom.set_xlim(x_data[-2], x_data[-1])
+   # ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
 
 
 
-    return figpath_plot, figpath_plot, figpath_plot
+    for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
+        label.set_fontweight("bold")
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=3))
+    ax_zoom.tick_params(axis="both", labelsize=2*markersize)
+    ax_zoom.set_ylabel("", fontweight="bold")
+    ax_zoom.yaxis.label.set_size(2*markersize)
+    ax_zoom.set_xlabel(f"", fontweight="bold")
+
+    ax_zoom.set_xticks([])  # Supprime les graduations
+    #ax_zoom.set_yticks([])  # Supprime les graduations
+    ax_zoom.set_xlabel("")  # Supprime le label
+    ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
+
+    ax_zoom.spines["top"].set_visible(False)
+
+    ax_zoom.grid(True)
+    fig_zoom.tight_layout()
+
+    figpath_zoom = f"{saveFileName}_zoom.pdf"
+    fig_zoom.savefig(figpath_zoom, format="pdf")
+    plt.close(fig_zoom)
+
+    return figpath_plot,figpath_zoom, figpath_plot
+
+def plotGame_dim_N_last(config,
+        x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
+        ylog_scale=False, Players2See=[1, 2], fontsize=40,
+        markersize=40, linewidth=12, linestyle="-",
+        pltText=False, step=1, tol=1e-3
+):
+    plt.figure(figsize=(18, 12))
+    #y_data = np.array(y_data, dtype=object)  # s'assurer que les sous-tableaux passent bien
+    y_data_Hybrid = y_data[0]
+
+    plt.rcParams.update({'font.size': fontsize})
+    #print(y_data_Hybrid)
+    if ylog_scale:
+        plt.yscale("log")
+
+    legend_handles = []
+    curves = []
+    funcNo_NE = [i for i in funcs_ if i!="NE"]
+    print(funcs_)
+
+    if config["num_hybrids"] != 1 and config["num_hybrid_set"]>1:
+        for j, fc in enumerate(funcNo_NE):
+            curve = []
+
+            for i in range(len(y_data_Hybrid)):
+                #print(f"y_data_Hybrid{y_data_Hybrid[i]}")
+                curve.append((y_data_Hybrid[i][j]))
+            curves.append(curve)
+    elif config["metric"] not in ["Relative_Efficienty_Loss", "Potential", "Speed"]:
+        curves = list(map(list, zip(*y_data_Hybrid)))
+        curve_NE = [y_data[-1][-1][0]]
+    else:
+        curves = [y_data_Hybrid]
+        curve_NE = [y_data[-1][-1]]
+
+    for j, fc in enumerate(funcNo_NE):
+
+        color = "red" if fc == "NE" else colors[j]
+        marker = "" if fc == "NE" else markers[j % len(markers)]
+        if fc in METHODS:
+            color = COLORS_METHODS[fc]
+            marker = MARKERS_METHODS[fc]
+
+        legend_handles.append(
+            Line2D([0], [0], color=color,
+                   marker=marker,
+                   markersize=markersize,
+                   markeredgecolor="black",
+                   linestyle=linestyle,
+                   linewidth=linewidth)
+        )
+
+        curve = curves[j]
+        x_data_i = x_data[:config["T_plot"]]
+        curve = curve[:config["T_plot"]]
+        plt.plot(
+            x_data_i[::step],
+            curve[::step],
+            linestyle=linestyle,
+            linewidth=linewidth,
+            marker=marker,
+            markersize=1.25 * markersize,
+            color=color,
+            label=f"{funcs_[j]}",
+            markeredgecolor="black",
+        )
+
+        if pltText:
+            lastValue = f"{curve[-1]:.2e}"
+            if config.get("metric", "") == "Relative_Efficienty_Loss":
+                lastValue = f"{curve[-1]:.3f}%"
+            plt.text(x_data[-1], curve[-1], lastValue,
+                fontweight="bold",
+                fontsize=fontsize,
+                bbox=dict(facecolor="white", alpha=0.7),
+                verticalalignment="bottom",
+                horizontalalignment="right")
+
+    # légendes et labels
+    if funcs_[-1]== "NE":
+
+        plt.axhline(
+            y=curve_NE,
+            color="red",
+            linestyle=linestyle,
+            linewidth=linewidth,
+            label=f"NE"
+        )
+
+        if pltText:
+            lastValue = f"{curve_NE[-1]:.2e}"
+            if config.get("metric", "") == "Relative_Efficienty_Loss":
+                lastValue = f"{curve_NE[-1]:.3f}%"
+            plt.text(x_data[-1], curve_NE[-1], lastValue,
+                     fontweight="bold",
+                     fontsize=fontsize,
+                     bbox=dict(facecolor="white", alpha=0.7),
+                     verticalalignment="bottom",
+                     horizontalalignment="right")
+
+    ax = plt.gca()
+
+    # --- Axis formatting ---
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight("bold")
+
+   # ax.xaxis.set_major_locator(MaxNLocator(integer=True))  # ✅ ticks entiers
+    if  config["num_hybrid_set"] == 1 and  config["num_hybrids"]>1:
+        ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=3))
+
+    plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
+    plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
+    plt.grid(True)
+
+    # 🔑 Horizontal legend
+    plt.legend(
+       # loc="lower left",
+        #bbox_to_anchor=(0.5, -0.15),  # ✅ sous la figure
+        #ncol=len(funcs_),  # ✅ labels sur une seule ligne
+        frameon=False,
+        prop={'weight': 'bold'}
+    )
+    plt.tight_layout()
+
+
+
+    # --- Save plot without legend ---
+    figpath_plot = f"{saveFileName}_plot.pdf"
+    plt.savefig(figpath_plot, format="pdf")
+
+    x_min, x_max = config["x_zoom_interval"]
+
+    fig_zoom = plt.figure(figsize=(18, 12))
+    ax_zoom = fig_zoom.add_subplot(111)
+
+    for i, fc in enumerate(funcNo_NE):
+        color = "red" if fc == "NE" else colors[j]
+        marker = "" if fc == "NE" else markers[j % len(markers)]
+        if fc in METHODS:
+            color = COLORS_METHODS[fc]
+            marker = MARKERS_METHODS[fc]
+        #n = y_data[i].shape[1]
+
+
+        x_vals = x_data[x_min-1:x_max]  # 5 derniers x
+
+        y_vals = curves[i][x_min-1:x_max]  # 5 derniers y
+        ax_zoom.plot(
+        x_vals,
+        y_vals,
+        linestyle=linestyle,
+        linewidth=linewidth,
+        marker=marker,
+        markersize=2*markersize,
+        color=color,
+        label=f"{legends[i]}",
+        markeredgecolor="black",
+        )
+        if pltText:
+            last_x, last_y = x_vals[-1], y_vals[-1]
+            ax_zoom.text(
+                last_x, last_y,
+                f"{last_y:.3e}",
+                fontweight="bold",
+                fontsize=2*markersize,
+                bbox=dict(facecolor="white", alpha=0.7),
+                verticalalignment="bottom",
+                horizontalalignment="right"
+            )
+
+    # même axes que principal (pas de zoom)
+    #ax_zoom.set_xlim(x_data[-2], x_data[-1])
+    #ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
+    if funcs_[-1]== "NE":
+
+        ax_zoom.axhline(
+            y=curve_NE,
+            color="red",
+            linestyle=linestyle,
+            linewidth=linewidth,
+            label=f"NE"
+        )
+
+    for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
+        label.set_fontweight("bold")
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
+    ax_zoom.tick_params(axis="both", labelsize=2*markersize)
+    ax_zoom.set_ylabel("", fontweight="bold")
+    ax_zoom.yaxis.label.set_size(1.5*markersize)
+    ax_zoom.set_xlabel(f"", fontweight="bold")
+
+    ax_zoom.set_xticks([])  # Supprime les graduations
+    ax_zoom.set_xlabel("")  # Supprime le label
+    ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
+
+    ax_zoom.spines["top"].set_visible(False)
+
+    ax_zoom.grid(True)
+    fig_zoom.tight_layout()
+
+    figpath_zoom = f"{saveFileName}_zoom.pdf"
+    fig_zoom.savefig(figpath_zoom, format="pdf")
+    plt.close(fig_zoom)
+
+
+
+
+    return figpath_plot, figpath_zoom, figpath_plot
 
 
 def plotGame2(config,
