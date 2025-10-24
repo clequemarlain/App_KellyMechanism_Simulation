@@ -29,12 +29,14 @@ colors = [
     "darkcyan",  # Cyan foncé
     "indigo",  # Bleu indigo
 ]
-METHODS = ["DAQ", "DAE", "OGD", "SBRD"]
+METHODS = ["DAQ", "DAE", "OGD", "SBRD", "RMFQ", "RMFQ_0.3"]
 COLORS_METHODS = {
    "DAQ"  : "darkorange",  # Orange foncé
    "DAE"  : "royalblue",  # Bleu vif
    "OGD"  : "green",  # Vert
    "SBRD" : "purple",  # Violet
+    "RMFQ":    "magenta",  # Magenta
+    "RMFQ_0.3": "magenta",  # Magenta
 }
 
 colors22 = [
@@ -51,11 +53,13 @@ MARKERS_METHODS = {
     "DAE": "^",  # Bleu vif
     "OGD": "v",  # Vert
     "SBRD": "D", # Violet
+    "RMFQ": "*",
+    "RMFQ_0.3": "*",
 }
 
 
 
-markers = ["H", "d","*","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers = ["H", "d","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 markers22 = ["H", "d","*","p"]
 def make_subset(n, h):
     """
@@ -338,10 +342,6 @@ def compute_G(a_i, delta, epsilon,c, n):
     """
     smin = n * epsilon + delta
     smax = n * c + delta
-    term_main = a_i * (1 / epsilon) + 1
-    term_others = (n - 1) * (a_i / (n*epsilon + delta)) ** 2 *0
-    #G = np.sqrt(term_main ** 2 + term_others)
-    #print("gdgdgdgdgd",(abs(a_i*smax/(epsilon *(epsilon+smax)) - 1),abs(a_i*smin/(epsilon *(epsilon+smin)) - 1)))
     G = max(abs(a_i*smax/(epsilon *(epsilon+smax)) - 1), abs(a_i*smin/(epsilon *(epsilon+smin)) - 1))
     return G
 
@@ -369,8 +369,8 @@ def compute_G_DAE(a_i, delta, epsilon,c, n):
     smax = delta + n * c
 
     def G(z, s):
-        inner = a_i * s / (z * (z + s)) - 1.0
-        return z * (inner ** 2)
+        inner = abs(a_i * s / (z * (z + s)) - 1.0)
+        return inner#z * (inner ** 2)
 
     # Evaluate corners
     corners = [
@@ -383,7 +383,7 @@ def compute_G_DAE(a_i, delta, epsilon,c, n):
     G_vals = {name: G(z, s) for (name, z, s) in corners}
     name_max = max(G_vals, key=G_vals.get)
     G_max = G_vals[name_max]
-    G = np.sqrt(G_max)
+    G = G_max#np.sqrt(G_max)
     return G
 
 
@@ -418,12 +418,13 @@ class GameKelly:
     def check_NE(self, z: torch.tensor, a_vector, c_vector, d_vector,):
         p = torch.sum(z) - z + self.delta
         if self.alpha  not in [0,1,2]:
-            err = torch.norm(solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
-                                           - z)#, self.tol * torch.ones(1))
+            z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
+            err = torch.norm(z_br - z)/torch.norm(c_vector - self.epsilon)#, self.tol * torch.ones(1))
         else:
-            err =  torch.norm(BR_alpha_fair(self.epsilon, c_vector, z, p,
+            z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
                                             a_vector, self.delta, self.alpha, self.price,
-                                            b=0) - z)#, self.tol * torch.ones(1))
+                                            b=0)
+            err =  torch.norm(z_br - z)/torch.norm(c_vector - self.epsilon)#, self.tol * torch.ones(1))
 
         return err   # torch.norm(self.grad_phi(z))
 
@@ -517,17 +518,46 @@ class GameKelly:
             G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
 
         # Step-size (theorem 3.1 Hazan)
-        if vary:
+        #if vary:
             # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
-        else:
-            eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
+        #    eta_t = 100/t**eta if t > 0 else eta
+        #else:
+        eta_t =  D / (G * np.sqrt(t))  # fallback pour t=0
 
         # Update rule
         z_candidate = bids + eta_t * grad_t
         z_t = Q1(z_candidate, self.epsilon, c_vector, self.price)
 
         return z_t, acc_grad
+
+    def RMFQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+
+        def phi(z):
+            x = self.fraction_resource(z)
+            V = V_func(x, self.alpha)
+            return a_vector * V - self.price * z + d_vector
+
+        acc_grad_copy = acc_grad.clone()
+        grad_t = self.grad_phi(phi, bids)
+        n = len(bids)
+
+        D = torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
+        # ⚠️ ici je suppose a_vector est scalaire (pour un joueur).
+        # Si c’est un vecteur (multi-joueur), on prend max(a_i).
+        a_i = torch.max(a_vector)
+        G = torch.zeros_like(a_vector)
+        for i in range(n):
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+
+
+        eta_t = a_vector/t**eta if t > 0 else eta
+        #eta_t = D / (G * np.sqrt(t))
+
+
+
+        acc_grad_copy += grad_t * eta_t
+        z_t = Q1(acc_grad_copy, self.epsilon, c_vector, self.price)
+        return z_t, acc_grad_copy
 
     def DAQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
@@ -550,7 +580,7 @@ class GameKelly:
 
         if vary:
         # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
+            eta_t = 100/t**eta if t > 0 else eta
         else:
             eta_t =  D / (G * np.sqrt(self.T))  #self.T fallback pour t=0
 
@@ -585,7 +615,7 @@ class GameKelly:
         # Step-size (theorem 3.1 Hazan)
         if vary:
             # Step-size (theorem 3.1 Hazan)
-            eta_t = D / (G * np.sqrt(3000)) if t > 0 else eta
+            eta_t = 100/t**eta if t > 0 else eta
         else:
             eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
         acc_grad_copy += grad_t * eta_t
@@ -710,33 +740,24 @@ def plotGame(config,
     for i, legend in enumerate(legends):
         color = "red" if legends[i] == "NE" else colors[i]
         marker = "" if legends[i] ==  "NE" else markers[i]
-        try:
-            if config["lrMethods"][i] in METHODS:
 
-                if config["lrMethods"].count(config["lrMethods"][i])>1 and config["Learning_rates"][i]==0.05:
-                    color = COLORS_METHODS[config["lrMethods"][i]]
-                    marker = MARKERS_METHODS[config["lrMethods"][i]]
-                elif config["lrMethods"].count(config["lrMethods"][i])==1:
-
-                    color = COLORS_METHODS[config["lrMethods"][i]]
-                    marker = MARKERS_METHODS[config["lrMethods"][i]]
-            if config["Hybrid_funcs_"][i][1] in METHODS and config["Learning_rates"][i]==0.05:
-                color = COLORS_METHODS[config["Hybrid_funcs_"][i][1]]
-                marker = MARKERS_METHODS[config["Hybrid_funcs_"][i][1]]
-                l+=1
-        except:
-            print()
+        if legends[i] in METHODS:
+            color = COLORS_METHODS[legends[i]]
+            marker = MARKERS_METHODS[legends[i]]
         y_data_i = y_data[i][:config["T_plot"]]
         x_data_i = x_data[:config["T_plot"]]
+        label = ""
+        if pltText:
+            label = f"{legend}"
         plt.plot(
             x_data_i[::step],
             y_data_i[::step],
             linestyle=linestyle,
             linewidth=linewidth,
             marker=marker,
-            markersize=1.25 * markersize,
+            markersize=1 * markersize,
             color=color,
-            label=f"{legend}",
+            label=label,
             markeredgecolor="black",
         )
 
@@ -779,7 +800,8 @@ def plotGame(config,
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
-    plt.legend(frameon=False, prop={'weight': 'bold'})
+    if pltText:
+        plt.legend(frameon=False, prop={'weight': 'bold'})
     plt.grid(True)
     plt.tight_layout()
 
@@ -819,8 +841,9 @@ def plotGame(config,
 
     fig_zoom = plt.figure(figsize=(18, 12))
     ax_zoom = fig_zoom.add_subplot(111)
+    x_min, x_max = config["x_zoom_interval"]
 
-    for i in range(len(legends)-1):
+    for i in range(len(legends)):
         color = "red" if legends[i] == "NE" else colors[i]
         marker = "" if legends[i] ==  "NE" else markers[i]
         if legends[i] in METHODS:
@@ -829,12 +852,12 @@ def plotGame(config,
         #n = y_data[i].shape[1]
 
 
-        x_vals = x_data[-2:]  # 5 derniers x
-        y_vals = (y_data[i])[-2:]  # 5 derniers y
+        x_vals = x_data[x_min:x_max]  # 5 derniers x
+        y_vals = (y_data[i])[x_min:x_max] # 5 derniers y
 
         ax_zoom.plot(
-        x_vals,
-        y_vals,
+        x_vals[::step],
+        y_vals[::step],
         linestyle=linestyle,
         linewidth=linewidth,
         marker=marker,
@@ -843,23 +866,26 @@ def plotGame(config,
         label=f"{legends[i]}",
         markeredgecolor="black",
         )
-        last_x, last_y = x_vals[-1], y_vals[-1]
-        ax_zoom.text(
-            last_x, last_y,
-            f"{last_y:.3e}",
-            fontweight="bold",
-            fontsize=2*markersize,
-            bbox=dict(facecolor="white", alpha=0.7),
-            verticalalignment="bottom",
-            horizontalalignment="right"
-        )
+        if pltText:
+            last_x, last_y = x_vals[-1], y_vals[-1]
+            ax_zoom.text(
+                last_x, last_y,
+                f"{last_y:.3e}",
+                fontweight="bold",
+                fontsize=2*markersize,
+                bbox=dict(facecolor="white", alpha=0.7),
+                verticalalignment="bottom",
+                horizontalalignment="right"
+            )
 
     # même axes que principal (pas de zoom)
-    ax_zoom.set_xlim(x_data[-2], x_data[-1])
-    ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
+   # ax_zoom.set_xlim(x_data[-2], x_data[-1])
+   # ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
 
-
-
+    #ax_zoom.yscale("log")
+    if ylog_scale:
+        # --- Zoom axis formatting ---
+        ax_zoom.set_yscale("log")  # ✅ logarithmic Y-scale if needed
     for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
         label.set_fontweight("bold")
     ax_zoom.tick_params(axis="both", labelsize=2*markersize)
@@ -868,6 +894,7 @@ def plotGame(config,
     ax_zoom.set_xlabel(f"", fontweight="bold")
 
     ax_zoom.set_xticks([])  # Supprime les graduations
+    ax_zoom.set_yticks([])  # Supprime les graduations
     ax_zoom.set_xlabel("")  # Supprime le label
     ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
 
@@ -931,9 +958,13 @@ def plotGame_dim_N(
         # Handle multi-joueurs à tracer
         Yi = np.array(y_data[i], dtype=float)[:Tm]   # (T, n_players)
 
+
         for j in Players2See:
             # style joueur (priorité au marker méthode, sinon marker joueur)
             marker = marker_series if marker_series else markers[j % len(markers)]
+            label = ""
+            if pltText:
+                label=name
 
             plt.plot(
                 x_data_i[::step],
@@ -944,7 +975,7 @@ def plotGame_dim_N(
                 markersize=1.25*markersize,
                 color=color,
                 markeredgecolor="black",
-                label=name  # label utilisé uniquement si legend() sans handles; on fournit handles plus bas
+                label=label  # label utilisé uniquement si legend() sans handles; on fournit handles plus bas
             )
 
             # Handle dédié pour la légende séparée
@@ -1103,33 +1134,42 @@ def plotGame_Hybrid_last(config,
 
 
     funcNo_NE = [i for i in funcs_ if i!="NE"]
+    if "RMFQ" in funcNo_NE:
+        idx = funcNo_NE.index("RMFQ")
+        funcNo_NE[idx] = "RMFQ_0.3"
+
 
 
     for j, fc in enumerate(funcs_):
 
         color = "red" if fc == "NE" else colors[j]
-        marker = "" if fc == "NE" else markers[j % len(markers)]
+        marker = "" if fc ==  "NE" else markers[j]
+
+
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
-
-        legend_handles.append(
-            Line2D([0], [0], color=color,
-                   marker=marker,
-                   markersize=markersize,
-                   markeredgecolor="black",
-                   linestyle=linestyle,
-                   linewidth=linewidth)
-        )
+        if  fc != "NE":
+            legend_handles.append(
+                Line2D([0], [0], color=color,
+                       marker=marker,
+                       markersize=markersize,
+                       markeredgecolor="black",
+                       linestyle=linestyle,
+                       linewidth=linewidth)
+            )
 
         if fc == "NE":
             # tracer une ligne horizontale rouge à la valeur k
-            print()
+            continue
 
         else:
             # tracer l’évolution (jusqu’à la dernière valeur)
 
             curve = curves[j]
+            label = ""
+            if pltText:
+                label = f"{fc}"
 
             plt.plot(
                 x_data,
@@ -1139,7 +1179,7 @@ def plotGame_Hybrid_last(config,
                 marker=marker,
                 markersize=1.25 * markersize,
                 color=color,
-                label=f"{funcs_[j]}",
+                label=label,
                 markeredgecolor="black",
             )
 
@@ -1158,9 +1198,6 @@ def plotGame_Hybrid_last(config,
     # légendes et labels
 
     if funcs_[-1]== "NE":
-
-
-        #print(y_data[-1][-1][0])
         plt.axhline(
             y=curve_NE,
             color="red",
@@ -1206,7 +1243,26 @@ def plotGame_Hybrid_last(config,
     )
     plt.tight_layout()
 
+    # --- Save legend separately ---
+    fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
+    ax = fig_legend.add_subplot(111)
+    ax.axis("off")
 
+    ax.legend(
+        legend_handles,
+        funcNo_NE,
+        frameon=True,
+        facecolor="white",
+        edgecolor="black",
+        prop={"weight": "bold", "size": fontsize},
+        ncol=len(legends),  # ✅ all items on one line
+        loc="center",  # ✅ centered in the figure
+        bbox_to_anchor=(0.5, 0.5)
+    )
+
+    figpath_legend = f"{saveFileName}_legend.pdf"
+    fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
+    plt.close(fig_legend)
 
     # --- Save plot without legend ---
     figpath_plot = f"{saveFileName}_plot.pdf"
@@ -1292,7 +1348,7 @@ def plotGame_Hybrid_last(config,
     fig_zoom.savefig(figpath_zoom, format="pdf")
     plt.close(fig_zoom)
 
-    return figpath_plot,figpath_zoom, figpath_plot
+    return figpath_plot,figpath_zoom, figpath_legend
 
 def plotGame_dim_N_last(config,
         x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
@@ -1349,6 +1405,10 @@ def plotGame_dim_N_last(config,
         curve = curves[j]
         x_data_i = x_data[:config["T_plot"]]
         curve = curve[:config["T_plot"]]
+        label = ""
+        if pltText:
+            label = f"{fc}"
+
         plt.plot(
             x_data_i[::step],
             curve[::step],
@@ -1357,7 +1417,7 @@ def plotGame_dim_N_last(config,
             marker=marker,
             markersize=1.25 * markersize,
             color=color,
-            label=f"{funcs_[j]}",
+            label=label,
             markeredgecolor="black",
         )
 
@@ -1426,6 +1486,29 @@ def plotGame_dim_N_last(config,
     # --- Save plot without legend ---
     figpath_plot = f"{saveFileName}_plot.pdf"
     plt.savefig(figpath_plot, format="pdf")
+
+
+    # --- Save legend separately ---
+    fig_legend = plt.figure(figsize=(12, 2))  # wide & short for horizontal layout
+    ax = fig_legend.add_subplot(111)
+    ax.axis("off")
+
+    ax.legend(
+        legend_handles,
+        funcNo_NE,
+        frameon=True,
+        facecolor="white",
+        edgecolor="black",
+        prop={"weight": "bold", "size": fontsize},
+        ncol=len(legends),  # ✅ all items on one line
+        loc="center",  # ✅ centered in the figure
+        bbox_to_anchor=(0.5, 0.5)
+    )
+
+    figpath_legend = f"{saveFileName}_legend.pdf"
+    fig_legend.savefig(figpath_legend, format="pdf", bbox_inches="tight")
+    plt.close(fig_legend)
+
 
     x_min, x_max = config["x_zoom_interval"]
 
@@ -1506,7 +1589,7 @@ def plotGame_dim_N_last(config,
 
 
 
-    return figpath_plot, figpath_zoom, figpath_plot
+    return figpath_plot, figpath_zoom, figpath_legend
 
 
 def plotGame2(config,

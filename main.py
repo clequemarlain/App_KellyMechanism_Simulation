@@ -89,6 +89,7 @@ class SimulationRunner:
                     var_init = self.config["var_init"]
                     bid0 =  torch.abs((2 * var_init) * torch.rand(n) + z_sol_equ - var_init)
             idx = 0
+            idx_rmfq = 0
             NbHybrid = 0
 
             copy_keys ={}
@@ -120,14 +121,19 @@ class SimulationRunner:
                     if key not in copy_keys:
                         copy_keys[lrMethod2] = key
                     idx += 1
+
                 elif lrMethod != "SBRD": #self.config["num_lrmethod"]!=0:
+                    if lrMethod == "RMFQ":
+                        lrMethod2 = f"RMFQ_{self.config["RMFQ_lr"][idx_rmfq]}"
+                        idx_rmfq += 1
+                    else:
+                        lrMethod2 = rf"{lrMethod}"# -- $\eta={self.config["Learning_rates"][idxMthd]}$"
                     key = lrMethod
                     if key not in copy_keys:
                         copy_keys[lrMethod] = (key)
 
-                    lrMethod2 = rf"{lrMethod}"# -- $\eta={self.config["Learning_rates"][idxMthd]}$"
-                    #print(f"lrMethod2:{lrMethod2}")
-                    idx += 1
+                   # idx += 1
+
 
                 game_set = GameKelly(n, price, eps, delta, alpha, tol)
                 Bids, Welfare, Utility_set, error_NE_set = game_set.learning(

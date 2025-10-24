@@ -84,7 +84,7 @@ with st.sidebar:
     cfg["T_plot"] = st.number_input("Nb Iterations  to plot (T)", 10, 100000, cfg["T"], step=10)
     cfg["Nb_random_sim"] = st.number_input("Number of simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
-    cfg["eta"] = st.number_input("Learning rate (η)", 1e-7, 100.0, float(cfg["eta"]), step=0.1, format="%.7f")
+    cfg["eta"] = st.number_input(rf"RMFQ Learning rate ($\beta$)", 1e-7, 100.0, float(cfg["eta"]), step=0.1, format="%.7f")
     cfg["lr_vary"] = st.checkbox("Vary learning rate over time?", value=cfg["lr_vary"])
     cfg["keep_initial_bid"] = st.checkbox("Keep same initial bid for all simulations?", value=False)
 
@@ -124,7 +124,7 @@ with st.sidebar:
         cfg["c"] = st.number_input("c (base budget)", 1e-4, 1e6, float(cfg["c"]), step=10.0)
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 0.0, 100.0, float(cfg["epsilon"]), step=0.05)
-        cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6)
+        cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"])/(cfg["c"] - cfg["epsilon"]), step=1e-6)
 
         # Heterogeneity vectors
         cfg["a_vector"] = st.text_area(
@@ -149,11 +149,11 @@ with st.sidebar:
     # ------------------------
     # 🧠 Learning methods
     # ------------------------
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "NumSBRD", "DAE", "XL", "Hybrid"]
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "DAE", "RMFQ", "Hybrid",  "XL", "NumSBRD", ]
     selected_methods = st.multiselect(
         "Select learning methods",
         lr_methods_all,
-        default=["OGD","DAQ", "DAE", "SBRD"]
+        default=["OGD","DAQ","RMFQ", "DAE", "SBRD"]
     )
     # ✅ If "Hybrid" is selected, keep only "Hybrid"
     if "Hybrid" in selected_methods:
@@ -169,7 +169,7 @@ with st.sidebar:
     # --- Default LR ---
     cfg["num_lrmethod"] = 0
 
-    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
+    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD" and  selected_methods[0]!="RMFQ":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
         # Number of learning rates for the single method
         num_lrmethod = st.number_input(
             "Number of learning rates",
@@ -217,16 +217,56 @@ with st.sidebar:
         except ValueError:
             st.error("Invalid format for Learning_rates, please enter numbers separated by commas.")
             cfg["Learning_rates"] = [cfg["eta"]] * len(selected_methods)
-        for i,lr in enumerate(cfg["Learning_rates"]):
-            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" :
+
+        for i,lr in enumerate(selected_methods):
+            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" and selected_methods[i]!="RMFQ" :
                 LEGENDS.append(rf"{selected_methods[i]}")# -- $\eta={lr}$")
             if selected_methods[i]=="SBRD":
 
                 LEGENDS.append(selected_methods[i])
+    # Only run this block if RMFQ is selected
+    if "RMFQ" in selected_methods:
+        # --- Defaults + UI input ---
+        default_rmfq_rates = cfg.get("RMFQ_lr", [cfg["eta"]])
+        rates_str_default = ", ".join(str(x) for x in default_rmfq_rates)
 
-       # LEGENDS = [m for m in selected_methods if m != "Hybrid"]
+        rates_str = st.text_area(
+            "List of RMFQ learning rates",
+            value=rates_str_default,
+            help=r"Comma-separated list of learning rates ($\beta$) values."
+        )
+
+        # Parse to list of floats
+        try:
+            cfg["RMFQ_lr"] = [float(x.strip()) for x in rates_str.split(",") if x.strip()]
+            if not cfg["RMFQ_lr"]:
+                raise ValueError("Empty list")
+        except Exception:
+            st.error("Invalid RMFQ learning rates. Using default [0.05].")
+            cfg["RMFQ_lr"] = [cfg["eta"]]
+
+        # --- Expand the selected methods at the RMFQ position ---
+        # Remember first RMFQ position
+        first_idx = selected_methods.index("RMFQ")
+
+        # Remove all RMFQ occurrences
+        selected_methods = [m for m in selected_methods if m != "RMFQ"]
+        cfg["Learning_rates"] = [m for m in cfg["Learning_rates"] if m != "RMFQ"]
+        LEGENDS = [m for m in LEGENDS if m != "RMFQ"]
+
+        # Insert one RMFQ per rate, preserving the original position
+        for i, lr in enumerate(cfg["RMFQ_lr"]):
+            selected_methods.insert(first_idx + i, "RMFQ")
+            cfg["Learning_rates"].insert(first_idx + i, lr)
+            LEGENDS.insert(first_idx + i, rf"RMFQ_{lr}")
+
+        # Update cfg
+        cfg["lrMethods"] = selected_methods
+
+
     cfg["num_hybrids"] = [0]
     cfg["num_hybrid_set"] =[0]
+
 
     if "Hybrid" in selected_methods:
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
@@ -319,7 +359,15 @@ with st.sidebar:
                 kk += 1
                 #LEGENDS_Hybrid.append(f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][idx]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][idx]})")
                 cfg["Hybrid_sets"].append([subset, remaining])
-
+    else:
+        x_zoom_interval = st.slider(
+            label="🔍 Select X-axis zoom interval",
+            min_value=0,
+            max_value=cfg["T"],
+            value=(0, cfg["T"]),  # default: full x range
+            step=1
+        )
+        cfg["x_zoom_interval"] = x_zoom_interval
     LEGENDS = LEGENDS_Hybrid + LEGENDS
     cfg["LEGENDS"]=LEGENDS
 
@@ -516,7 +564,7 @@ try:
 
             else:
                 y_data.append(np.full_like(y_data[0], results['optimal']['LSW']))
-            LEGENDS.append("Optimal")
+            #LEGENDS.append("Optimal")
 
         # 📘 Step 2: Build Plotly figure
         # =====================================================
@@ -569,7 +617,7 @@ try:
         # 📘 Step 3: Format layout
         # =====================================================
         y_label_map = {
-            "Speed": "‖BR(z) − z‖",
+            "Speed": rf"Nash Gap",
             "LSW": "LSW",
             "SW": "Social Welfare ",
             "Bid": "Player Bid",
@@ -578,7 +626,7 @@ try:
             "Avg_Payoff": "Average Payoff",
             "Res_Payoff": "Payoff Residual",
             "Dist_To_Optimum_SW": "Distance to Optimal SW",
-            "Relative_Efficienty_Loss": r"$\rho(z)$",
+            "Relative_Efficienty_Loss": r"$\rho(z(t))$",
             "Pareto": "Pareto Check",
             "Potential": "Potential"
         }
@@ -641,12 +689,15 @@ try:
             save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
             try:
                 xlab = rf"$\alpha_{{{cfg["Hybrid_funcs"][0][0]}}}$"
+
                 figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg,x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
                                                         saveFileName=save_to,fontsize=40, markersize=45, linewidth=12,linestyle="--",
                                                             ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
             except Exception:
-                print("nonnnn")
+                print("")
         if "Hybrid" in selected_methods and len(selected_methods)==1:
+
+
 
             x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
             if num_hybrid_set>1:
@@ -673,6 +724,7 @@ try:
 
                     func_group.append("NE")
                 elif cfg["metric"] == "Relative_Efficienty_Loss":
+                    cfg["y_label"] = r"$\rho(z(T))$"
                     baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
                     func_group.append("NE")
@@ -704,6 +756,7 @@ try:
 
                     func_group.append("NE")
                 elif cfg["metric"] in ["Relative_Efficienty_Loss"]:
+                    cfg["y_label"] = r"$\rho(z(T))$"
                     baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
                     func_group.append("NE")
@@ -712,6 +765,9 @@ try:
                 #xlab = rf"$A\alpha_{{{funcs_[0]}}}$"
                 xlab = cfg["x_label"]
                 x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
+                if cfg["metric"] in ["Speed"]:
+                    cfg["y_label"] =  "‖BR(z(T)) − z(T)‖"
+
                 if num_hybrid_set == 1 and num_hybrids == 1:
                     x_data_2 = x_data
                 else:

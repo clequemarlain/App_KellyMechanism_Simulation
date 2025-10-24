@@ -4,7 +4,7 @@ SIMULATION_CONFIG = {
     "T": 2000,  # Number of iterations in the learning process
     "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
     "n": 10,  # Number of players in the game
-    "eta": 0.5,  # Step size for the learning update
+    "eta": 0.3,  # Step size for the learning update
     "price": 1.0,  # Price parameter in the game (can represent a resource price)
     "a": 100,  # Parameter for the utility function heterogeneity (a_i)
     "a_min": 1,

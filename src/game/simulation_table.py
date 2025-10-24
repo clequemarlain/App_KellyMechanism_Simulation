@@ -49,6 +49,7 @@ def run_simulation_table_avg(config, GameKelly):
             dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
             d_vector = 0.7 * dmin * 0
             idx = 0
+            idx_rmfq =0
             bid0 = (c - epsilon) * torch.rand(n) + epsilon
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
@@ -78,6 +79,9 @@ def run_simulation_table_avg(config, GameKelly):
                         if key not in copy_keys:
                             copy_keys[lrMethod2] = key
                         idx += 1
+                    if lrMethod == "RMFQ":
+                        lrMethod2 = f"RMFQ_{config["RMFQ_lr"][idx_rmfq]}"
+                        idx_rmfq += 1
                     elif lrMethod != "SBRD":  # self.config["num_lrmethod"]!=0:
                         key = lrMethod
                         if key not in copy_keys:
@@ -132,6 +136,7 @@ def display_results_streamlit_dict(results, config, save_path=None):
 
     # Build table rows
     table_rows = []
+
     for gamma in sorted(list_gamma):
         for n in sorted(list_n):
             row = [gamma, n]
