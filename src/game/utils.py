@@ -555,12 +555,12 @@ class GameKelly:
         for i in range(n):
             G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
-        if vary:
-            eta_t = a_vector/t**eta if t > 0 else eta
-        else:
+       # if vary:
+        eta_t = a_vector/t**eta if t > 0 else eta
+       # else:
         #eta_t = D / (G * np.sqrt(t))
 
-            eta_t = D *np.sqrt(2 / self.T)/torch.norm(G)
+         #eta_t = D *np.sqrt(2 / self.T)/torch.norm(G)
 
 
 
