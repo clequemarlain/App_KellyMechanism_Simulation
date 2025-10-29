@@ -62,6 +62,7 @@ class SimulationRunner:
             "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True,
         )
         z_ne =  Bids_Opt[0][-1]
+        jain_index_ne = Bids_Opt[2][-1]
         x_ne = z_ne/(torch.sum(z_ne) + self.config["delta"])
         Valuation_ne = Valuation(x_ne, a_vector, d_vector, alpha)
         SW_ne = (torch.sum(Valuation_ne))
@@ -78,6 +79,7 @@ class SimulationRunner:
                 'x_ne' : x_ne,
                 "Potential_ne":  Potential_ne.detach().numpy(),
                 "Residual_ne" : Residual_ne.detach().numpy(),
+                "Jain_index_NE": jain_index_ne.detach().numpy(),
             }
         }
 
@@ -103,7 +105,7 @@ class SimulationRunner:
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
-                if lrMethod == "Hybrid":
+                if lrMethod == "Hybrid" :
                     NbHybrid = NbHybrid+1
 
                    # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
@@ -123,8 +125,8 @@ class SimulationRunner:
                     idx += 1
 
                 elif lrMethod != "SBRD": #self.config["num_lrmethod"]!=0:
-                    if lrMethod == "RMFQ":
-                        lrMethod2 = f"RMFQ_{self.config["RMFQ_lr"][idx_rmfq]}"
+                    if lrMethod == "RRM":
+                        lrMethod2 = f"RRM_{self.config["RRM_lr"][idx_rmfq]}"
                         idx_rmfq += 1
                     else:
                         lrMethod2 = rf"{lrMethod}"# -- $\eta={self.config["Learning_rates"][idxMthd]}$"
@@ -145,8 +147,6 @@ class SimulationRunner:
                 Pareto_check =   (Welfare[2] -Valuation_log_opt*torch.ones_like(Welfare[2]) ) + (z_sol_equ*torch.ones_like(Bids[0]) - Bids[0])
                 LSW = Welfare[1]
                 Relative_Efficienty_Loss = torch.abs((SocialWelfare - SW_opt)/SW_opt) * 100
-
-
                 # --- Prepare one simulation result ---
                 sim_result = {
                     'Speed': error_NE_set.detach().numpy(),
@@ -155,9 +155,11 @@ class SimulationRunner:
                     'Dist_To_Optimum_SW': Distance2optSW.detach().numpy(),
                     'Relative_Efficienty_Loss': Relative_Efficienty_Loss.detach().numpy(),
                     'Bid': Bids[0].detach().numpy(),
+                    'Avg_Bid': Bids[1].detach().numpy(),
+                    "Jain_Index": Bids[2].detach().numpy(),
                     "Pareto": Pareto_check.detach().numpy(),
                     'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
-                    'Avg_Bid': Bids[1].detach().numpy(),
+
                     'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
                     'Payoff': Utility_set[0].detach().numpy(),
                     'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
@@ -189,13 +191,14 @@ class SimulationRunner:
 
         # 🔑 on fige les éléments dans une liste pour éviter le RuntimeError
         for method, metrics in list(self.results_copy["methods"].items()):
-
+            #print(method)
             # Vérifier si la méthode est hybride
             is_hybrid = False
             if method in copy_keys:
                 keys = copy_keys[method]
-                if keys[-1] == "Hybrid" and self.config["num_hybrid_set"]>=1 and self.config["num_hybrids"]>1:
+                if keys[-1] == "Hybrid" and self.config["num_hybrid_set"]>=1 and self.config["num_hybrids"]>1 :
                     is_hybrid = True
+
 
             for k, v_list in metrics.items():
                 # Cas scalaires (pas des tableaux)
@@ -207,6 +210,7 @@ class SimulationRunner:
 
                     mean_val = np.mean(np.stack(v_list), axis=0)
                     self.results["methods"][method][k] = mean_val
+
                    # print(k,self.results["methods"][method][k])
 
 

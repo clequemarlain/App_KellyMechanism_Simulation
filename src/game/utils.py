@@ -12,7 +12,7 @@ import sympy as sp
 colors = [
     "slategray",  # Gris ardoise
     "brown",  # Marron
-    "magenta",  # Magenta
+    #"magenta",  # Magenta
     "teal",  # Bleu-vert
 
     "salmon",      # Saumon
@@ -29,14 +29,14 @@ colors = [
     "darkcyan",  # Cyan foncé
     "indigo",  # Bleu indigo
 ]
-METHODS = ["DAQ", "DAE", "OGD", "SBRD", "RMFQ", "RMFQ_0.3"]
+METHODS = ["DAQ", "DAE", "OGD", "SBRD", "RRM", "RRM_0.3"]
 COLORS_METHODS = {
    "DAQ"  : "darkorange",  # Orange foncé
    "DAE"  : "royalblue",  # Bleu vif
    "OGD"  : "green",  # Vert
    "SBRD" : "purple",  # Violet
-    "RMFQ":    "magenta",  # Magenta
-    "RMFQ_0.3": "magenta",  # Magenta
+    "RRM":    "magenta",  # Magenta
+    "RRM_0.3": "magenta",  # Magenta
 }
 
 colors22 = [
@@ -53,13 +53,13 @@ MARKERS_METHODS = {
     "DAE": "^",  # Bleu vif
     "OGD": "v",  # Vert
     "SBRD": "D", # Violet
-    "RMFQ": "*",
-    "RMFQ_0.3": "*",
+    "RRM": "*",
+    "RRM_0.3": "*",
 }
 
 
 
-markers = ["H", "d","p", "|", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers = ["H", "d","p", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
 markers22 = ["H", "d","*","p"]
 def make_subset(n, h):
     """
@@ -340,8 +340,8 @@ def compute_G(a_i, delta, epsilon,c, n):
     G : float
         Upper bound of Lipschitz constant
     """
-    smin = n * epsilon + delta
-    smax = n * c + delta
+    smin = (n - 1) * epsilon + delta
+    smax = (n - 1) * c + delta
     G = max(abs(a_i*smax/(epsilon *(epsilon+smax)) - 1), abs(a_i*smin/(epsilon *(epsilon+smin)) - 1))
     return G
 
@@ -432,6 +432,12 @@ class GameKelly:
         z_copy = z.clone()
         z_t = 1/t*torch.sum(z,dim=0)
         return z_t
+    def Jain_index(self,z):
+        n = z.shape[0]                       # players on last axis
+        s  = torch.sum(z)
+        s2 = torch.sum(z**2)
+
+        return s**2 /(n * s2)
     def Regret(self,  bids,t,a_vector, c_vector, d_vector,):
         def phi( z):
             x = self.fraction_resource(z)
@@ -530,7 +536,7 @@ class GameKelly:
 
         return z_t, acc_grad
 
-    def RMFQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def RRM(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -549,9 +555,12 @@ class GameKelly:
         for i in range(n):
             G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
-
-        eta_t = a_vector/t**eta if t > 0 else eta
+        if vary:
+            eta_t = a_vector/t**eta if t > 0 else eta
+        else:
         #eta_t = D / (G * np.sqrt(t))
+
+            eta_t = D *np.sqrt(2 / self.T)/torch.norm(G)
 
 
 
@@ -671,11 +680,14 @@ class GameKelly:
         vec_LSW = torch.zeros(n_iter + 1, dtype=torch.float64)
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
         potential = vec_SW.clone()
+        jain_idx = vec_SW.clone()
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         utiliy_residual = utiliy.clone()
         valuation = utiliy.clone()
         error_NE = torch.zeros(n_iter + 1, dtype=torch.float64)
         matrix_bids[0] = bids.clone()
+        jain_idx[0] = self.Jain_index(bids)
+
         error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
         utiliy[0] = Payoff(self.fraction_resource(matrix_bids[0]), matrix_bids[0], a_vector, d_vector, self.alpha, self.price)
         valuation[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)
@@ -693,6 +705,7 @@ class GameKelly:
             k = t
             p = torch.sum(matrix_bids[t-1]) - matrix_bids[t-1] + self.delta
             matrix_bids[t], acc_grad = func(t, a_vector, c_vector, d_vector, eta, matrix_bids[t-1], acc_grad, p=p, vary=vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets)
+            jain_idx[t] = self.Jain_index(matrix_bids[t])
             error_NE[t] = self.check_NE(matrix_bids[t], a_vector, c_vector, d_vector,)
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
 
@@ -709,7 +722,7 @@ class GameKelly:
                 break
         col = torch.arange(1, k + 1)
         agg_bids = torch.cumsum(matrix_bids[:k, :], dim=0)/ col.unsqueeze(1).expand(-1,self.n)
-        Bids = [matrix_bids[:k, :], agg_bids[:k, :]]
+        Bids = [matrix_bids[:k, :], agg_bids[:k, :], jain_idx[:k]]
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
         agg_utility = torch.cumsum(utiliy[:k, :], dim=0)
 
@@ -800,7 +813,7 @@ def plotGame(config,
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
-    if pltText:
+    if config["pltLegend"]:
         plt.legend(frameon=False, prop={'weight': 'bold'})
     plt.grid(True)
     plt.tight_layout()
@@ -1134,9 +1147,9 @@ def plotGame_Hybrid_last(config,
 
 
     funcNo_NE = [i for i in funcs_ if i!="NE"]
-    if "RMFQ" in funcNo_NE:
-        idx = funcNo_NE.index("RMFQ")
-        funcNo_NE[idx] = "RMFQ_0.3"
+    if "RRM" in funcNo_NE:
+        idx = funcNo_NE.index("RRM")
+        funcNo_NE[idx] = "RRM_0.3"
 
 
 
@@ -1168,7 +1181,7 @@ def plotGame_Hybrid_last(config,
 
             curve = curves[j]
             label = ""
-            if pltText:
+            if config["pltLegend"]:
                 label = f"{fc}"
 
             plt.plot(
@@ -1368,7 +1381,6 @@ def plotGame_dim_N_last(config,
     legend_handles = []
     curves = []
     funcNo_NE = [i for i in funcs_ if i!="NE"]
-    print(funcs_)
 
     if config["num_hybrids"] != 1 and config["num_hybrid_set"]>1:
         for j, fc in enumerate(funcNo_NE):
@@ -1379,10 +1391,14 @@ def plotGame_dim_N_last(config,
                 curve.append((y_data_Hybrid[i][j]))
             curves.append(curve)
     elif config["metric"] not in ["Relative_Efficienty_Loss", "Potential", "Speed"]:
-        curves = list(map(list, zip(*y_data_Hybrid)))
-        curve_NE = [y_data[-1][-1][0]]
+        try:
+            curves = list(map(list, zip(*y_data_Hybrid)))
+            curve_NE = [y_data[-1][-1][0]]
+        except:
+            o=2
     else:
         curves = [y_data_Hybrid]
+        print(y_data_Hybrid)
         curve_NE = [y_data[-1][-1]]
 
     for j, fc in enumerate(funcNo_NE):
@@ -1406,7 +1422,7 @@ def plotGame_dim_N_last(config,
         x_data_i = x_data[:config["T_plot"]]
         curve = curve[:config["T_plot"]]
         label = ""
-        if pltText:
+        if config["pltLegend"]:
             label = f"{fc}"
 
         plt.plot(
@@ -1706,3 +1722,60 @@ def plotGame2(config,
 
 
     return figpath_plot, figpath_legend, figpath_plot
+
+
+
+def plotGame_Jain(config,results, list_gamma,
+    ylog_scale=False, fontsize=40, markersize=40, linewidth=12,
+    linestyle="-", pltText=False, step=1,tol=1e-6
+):
+    plt.figure(figsize=(18, 12))
+
+    plt.rcParams.update({'font.size': fontsize})
+    x_data = list_gamma.copy()
+
+    if ylog_scale:
+        plt.yscale("log")
+
+    # --- Plot curves ---
+    l=0
+    for i, (n, gamma_map) in enumerate(sorted(results.items(), key=lambda kv: kv[0])):
+        y_data_i = [gamma_map.get(g, None) for g in list_gamma]
+
+        plt.plot(
+            x_data[::step],
+            y_data_i[::step],
+            linestyle=linestyle,
+            linewidth=linewidth,
+            marker=markers[i],
+            markersize=1 * markersize,
+            color=colors[i],
+            label=rf"$n={n}$",
+            markeredgecolor="black",
+        )
+    # --- Axis formatting ---
+    ax = plt.gca()
+
+    # --- Axis formatting ---
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight("bold")
+
+
+
+    # --- Save plot without legend ---
+    #figpath_plot = f"{saveFileName}_plot.pdf"
+    #plt.savefig(figpath_plot, format="pdf")
+
+    plt.ylabel(str(rf"Jain Index"), fontweight="bold", fontsize=2*fontsize)
+    plt.xlabel(str(rf"$\gamma$"), fontweight="bold", fontsize=2*fontsize)
+    if config["pltLegend"]:
+        plt.legend(frameon=False, prop={'weight': 'bold'})
+    plt.grid(True)
+    plt.tight_layout()
+
+    # --- Save plot without legend ---
+    figpath_plot = f"JainIndex_plot.pdf"
+    plt.savefig(figpath_plot, format="pdf")
+
+
+    return figpath_plot

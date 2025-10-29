@@ -53,43 +53,46 @@ def run_simulation_table_avg(config, GameKelly):
             bid0 = (c - epsilon) * torch.rand(n) + epsilon
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
+                minError_list = []
                 copy_keys={}
+
+
+                Hybrid_funcs, Hybrid_sets = [], []
+
+                lrMethod2 = lrMethod
+                if lrMethod == "Hybrid":
+                    NbHybrid = NbHybrid + 1
+
+                    # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
+                    # remaining = [i for i in range(self.config["n"]) if i not in subset]
+                    # if self.config["Random_set"] and NbHybrid == 1:
+                    #     Hybrid_sets = [subset, remaining]
+                    # else:
+                    Hybrid_sets = config["Hybrid_sets"][NbHybrid - 1]
+                    Hybrid_funcs = config["Hybrid_funcs"][NbHybrid - 1]
+
+                    lrMethod2 = f"({Hybrid_funcs[0]}: {config['Nb_A1'][NbHybrid - 1]}, {Hybrid_funcs[1]}: {n - config['Nb_A1'][NbHybrid - 1]})"
+                    key = tuple(Hybrid_funcs + ["Hybrid"])
+                    if key not in copy_keys:
+                        copy_keys[lrMethod2] = key
+                    idx += 1
+
+                if lrMethod == "RRM":
+                    lrMethod2 = f"RRM_{config["RRM_lr"][idx_rmfq]}"
+                    idx_rmfq += 1
+                elif lrMethod != "SBRD":  # self.config["num_lrmethod"]!=0:
+                    key = lrMethod
+                    if key not in copy_keys:
+                        copy_keys[lrMethod] = (key)
+
+                    #lrMethod2 = rf"{lrMethod} -- $\eta={config["Learning_rates"][idxMthd]}$"
+                    # print(f"lrMethod2:{lrMethod2}")
+                    idx += 1
                 for sim in range(Nb_random_sim):
                     eps = epsilon * torch.ones(n)
 
                     if not config["keep_initial_bid"]:
                         bid0 = (c - epsilon) * torch.rand(n) + epsilon
-
-                    Hybrid_funcs, Hybrid_sets = [], []
-
-                    lrMethod2 = lrMethod
-                    if lrMethod == "Hybrid":
-                        NbHybrid = NbHybrid + 1
-
-                        # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
-                        # remaining = [i for i in range(self.config["n"]) if i not in subset]
-                        # if self.config["Random_set"] and NbHybrid == 1:
-                        #     Hybrid_sets = [subset, remaining]
-                        # else:
-                        Hybrid_sets = config["Hybrid_sets"][NbHybrid - 1]
-                        Hybrid_funcs = config["Hybrid_funcs"][NbHybrid - 1]
-
-                        lrMethod2 = f"({Hybrid_funcs[0]}: {config['Nb_A1'][NbHybrid - 1]}, {Hybrid_funcs[1]}: {n - config['Nb_A1'][NbHybrid - 1]})"
-                        key = tuple(Hybrid_funcs + ["Hybrid"])
-                        if key not in copy_keys:
-                            copy_keys[lrMethod2] = key
-                        idx += 1
-                    if lrMethod == "RMFQ":
-                        lrMethod2 = f"RMFQ_{config["RMFQ_lr"][idx_rmfq]}"
-                        idx_rmfq += 1
-                    elif lrMethod != "SBRD":  # self.config["num_lrmethod"]!=0:
-                        key = lrMethod
-                        if key not in copy_keys:
-                            copy_keys[lrMethod] = (key)
-
-                        #lrMethod2 = rf"{lrMethod} -- $\eta={config["Learning_rates"][idxMthd]}$"
-                        # print(f"lrMethod2:{lrMethod2}")
-                        idx += 1
 
                     game_set = GameKelly(n, price, torch.tensor(epsilon), delta, alpha, tol)
 
@@ -102,6 +105,7 @@ def run_simulation_table_avg(config, GameKelly):
                     min_error = torch.min(error_NE_set)
                     nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
+                    minError_list.append(min_error)
 
 
                 # Average over Nb_random_sim
@@ -109,6 +113,7 @@ def run_simulation_table_avg(config, GameKelly):
                     if any(i != float('inf') for i in iterations_list) else float('inf')
 
                 results[gamma][n][lrMethod2] = avg_iterations
+                results[gamma][n][lrMethod2+"error"] = np.mean(minError_list)
         # Mise à jour progression
         progress = (sim_gamma + 1) /len(list_gamma)
         progress_bar.progress(progress)
@@ -144,9 +149,8 @@ def display_results_streamlit_dict(results, config, save_path=None):
                 # Handle hybrid method labels if present
                 #method_keys = [k for k in results[gamma][n].keys() if method in k] if method == "Hybrid" else [method]
                 metric = results[gamma][n][method]
-
                 if isinstance(metric, float) and np.isinf(metric):
-                    metric_str = f"<{config["T"]}"#"∞"
+                    metric_str = results[gamma][n][method+ "error"]#f"<{config["T"]}"#"∞"
                 else:
                     metric_str = str(metric)
                 row.append(metric_str)

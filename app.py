@@ -12,6 +12,7 @@ from src.game.config import SIMULATION_CONFIG as DEFAULT_CONFIG
 from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
 from src.game.simulation_table import run_simulation_table_avg, display_results_streamlit_dict
+from src.game.Jain_index import run_jain_vs_gamma, plot_jain_vs_gamma
 #from simulation_param_n_gamma import *
 
 # -----------------------
@@ -84,7 +85,7 @@ with st.sidebar:
     cfg["T_plot"] = st.number_input("Nb Iterations  to plot (T)", 10, 100000, cfg["T"], step=10)
     cfg["Nb_random_sim"] = st.number_input("Number of simulations", 1, 50, int(cfg["Nb_random_sim"]), step=1)
     cfg["alpha"] = st.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
-    cfg["eta"] = st.number_input(rf"RMFQ Learning rate ($\beta$)", 1e-7, 100.0, float(cfg["eta"]), step=0.1, format="%.7f")
+    cfg["eta"] = st.number_input(rf"RRM Learning rate ($\beta$)", 1e-7, 100.0, float(cfg["eta"]), step=0.1, format="%.7f")
     cfg["lr_vary"] = st.checkbox("Vary learning rate over time?", value=cfg["lr_vary"])
     cfg["keep_initial_bid"] = st.checkbox("Keep same initial bid for all simulations?", value=False)
 
@@ -101,11 +102,12 @@ with st.sidebar:
     # ------------------------
     metrics_all = [
         "Relative_Efficienty_Loss","Avg_Payoff",  "Speed", "Potential", "Pareto", "Payoff", "Bid",
-        "SW", "LSW", "Dist_To_Optimum_SW", "Avg_Bid",  "Res_Payoff"
+        "SW","Jain_Index", "LSW", "Dist_To_Optimum_SW", "Avg_Bid",  "Res_Payoff"
     ]
     cfg["metric"] = st.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     cfg["Track"] = st.checkbox("Track the metric over time?", value=True)
+    cfg["pltLegend"] = st.checkbox("Plot legend ", value=True)
     cfg["Random_set"] = st.checkbox("Random players' sets?", value=True)
 
     # ------------------------
@@ -149,11 +151,11 @@ with st.sidebar:
     # ------------------------
     # 🧠 Learning methods
     # ------------------------
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "DAE", "RMFQ", "Hybrid",  "XL", "NumSBRD", ]
+    lr_methods_all = ["DAQ", "OGD", "SBRD", "DAE", "RRM", "Hybrid",  "XL", "NumSBRD", ]
     selected_methods = st.multiselect(
         "Select learning methods",
         lr_methods_all,
-        default=["OGD","DAQ","RMFQ", "DAE", "SBRD"]
+        default=["OGD","DAQ","RRM", "DAE", "SBRD"]
     )
     # ✅ If "Hybrid" is selected, keep only "Hybrid"
     if "Hybrid" in selected_methods:
@@ -169,7 +171,7 @@ with st.sidebar:
     # --- Default LR ---
     cfg["num_lrmethod"] = 0
 
-    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD" and  selected_methods[0]!="RMFQ":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
+    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD" and  selected_methods[0]!="RRM":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
         # Number of learning rates for the single method
         num_lrmethod = st.number_input(
             "Number of learning rates",
@@ -219,46 +221,46 @@ with st.sidebar:
             cfg["Learning_rates"] = [cfg["eta"]] * len(selected_methods)
 
         for i,lr in enumerate(selected_methods):
-            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" and selected_methods[i]!="RMFQ" :
+            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" and selected_methods[i]!="RRM" :
                 LEGENDS.append(rf"{selected_methods[i]}")# -- $\eta={lr}$")
-            if selected_methods[i]=="SBRD":
+            if selected_methods[i]=="SBRD"   :
 
                 LEGENDS.append(selected_methods[i])
-    # Only run this block if RMFQ is selected
-    if "RMFQ" in selected_methods:
+    # Only run this block if RRM is selected
+    if "RRM" in selected_methods:
         # --- Defaults + UI input ---
-        default_rmfq_rates = cfg.get("RMFQ_lr", [cfg["eta"]])
-        rates_str_default = ", ".join(str(x) for x in default_rmfq_rates)
+        default_rrm_rates = cfg.get("RRM_lr", [cfg["eta"]])
+        rates_str_default = ", ".join(str(x) for x in default_rrm_rates)
 
         rates_str = st.text_area(
-            "List of RMFQ learning rates",
+            "List of RRM learning rates",
             value=rates_str_default,
             help=r"Comma-separated list of learning rates ($\beta$) values."
         )
 
         # Parse to list of floats
         try:
-            cfg["RMFQ_lr"] = [float(x.strip()) for x in rates_str.split(",") if x.strip()]
-            if not cfg["RMFQ_lr"]:
+            cfg["RRM_lr"] = [float(x.strip()) for x in rates_str.split(",") if x.strip()]
+            if not cfg["RRM_lr"]:
                 raise ValueError("Empty list")
         except Exception:
-            st.error("Invalid RMFQ learning rates. Using default [0.05].")
-            cfg["RMFQ_lr"] = [cfg["eta"]]
+            st.error("Invalid RRM learning rates. Using default [0.05].")
+            cfg["RRM_lr"] = [cfg["eta"]]
 
-        # --- Expand the selected methods at the RMFQ position ---
-        # Remember first RMFQ position
-        first_idx = selected_methods.index("RMFQ")
+        # --- Expand the selected methods at the RRM position ---
+        # Remember first RRM position
+        first_idx = selected_methods.index("RRM")
 
-        # Remove all RMFQ occurrences
-        selected_methods = [m for m in selected_methods if m != "RMFQ"]
-        cfg["Learning_rates"] = [m for m in cfg["Learning_rates"] if m != "RMFQ"]
-        LEGENDS = [m for m in LEGENDS if m != "RMFQ"]
+        # Remove all RRM occurrences
+        selected_methods = [m for m in selected_methods if m != "RRM"]
+        cfg["Learning_rates"] = [m for m in cfg["Learning_rates"] if m != "RRM"]
+        LEGENDS = [m for m in LEGENDS if m != "RRM"]
 
-        # Insert one RMFQ per rate, preserving the original position
-        for i, lr in enumerate(cfg["RMFQ_lr"]):
-            selected_methods.insert(first_idx + i, "RMFQ")
+        # Insert one RRM per rate, preserving the original position
+        for i, lr in enumerate(cfg["RRM_lr"]):
+            selected_methods.insert(first_idx + i, "RRM")
             cfg["Learning_rates"].insert(first_idx + i, lr)
-            LEGENDS.insert(first_idx + i, rf"RMFQ_{lr}")
+            LEGENDS.insert(first_idx + i, rf"RRM_{lr}")
 
         # Update cfg
         cfg["lrMethods"] = selected_methods
@@ -268,7 +270,7 @@ with st.sidebar:
     cfg["num_hybrid_set"] =[0]
 
 
-    if "Hybrid" in selected_methods:
+    if "Hybrid" in selected_methods :
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
         func_group  = []
         # Number of hybrids
@@ -370,6 +372,7 @@ with st.sidebar:
         cfg["x_zoom_interval"] = x_zoom_interval
     LEGENDS = LEGENDS_Hybrid + LEGENDS
     cfg["LEGENDS"]=LEGENDS
+
 
 
     cfg["Players2See"] = list(range(0, 1))
@@ -549,11 +552,14 @@ try:
 
 
         for method in LEGENDS:
+            if cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] ==1:
 
-            if cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] ==1 :
                 y_data.append(results['methods']["Hybrid"][cfg["metric"]])
 
+
             else:
+
+
                 y_data.append(results['methods'][method][cfg["metric"]])
             legends.append(method)
            # print(y_data)
@@ -617,11 +623,12 @@ try:
         # 📘 Step 3: Format layout
         # =====================================================
         y_label_map = {
-            "Speed": rf"Nash Gap",
+            "Speed": rf"Dist2NE",
             "LSW": "LSW",
             "SW": "Social Welfare ",
             "Bid": "Player Bid",
             "Avg_Bid": "Average Bid",
+            "Jain_Index": "Jain Index",
             "Payoff": "Player's Payoff",
             "Avg_Payoff": "Average Payoff",
             "Res_Payoff": "Payoff Residual",
@@ -651,6 +658,7 @@ try:
 
         Valuation_ne = Valuation(x_ne, cfg["a"], cfg["d_vector"], cfg["alpha"])
         SW_ne = results['optimal']["SW_NE"]
+        Jain_idx_ne = results["optimal"]["Jain_index_NE"]
         SW_opt = results['optimal']["SW"]
         Residual_ne = results['optimal']["Residual_ne"]
         RLoss = torch.abs((SW_ne - SW_opt) / SW_opt)*100
@@ -689,6 +697,7 @@ try:
             save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
             try:
                 xlab = rf"$\alpha_{{{cfg["Hybrid_funcs"][0][0]}}}$"
+                print(y_data)
 
                 figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg,x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
                                                         saveFileName=save_to,fontsize=40, markersize=45, linewidth=12,linestyle="--",
@@ -720,6 +729,12 @@ try:
                     func_group.append("NE")
                 elif cfg["metric"] in ["Bid", "Avg_Bid"] :
                     baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                    y_data_2.append(np.array(baseline))
+
+                    func_group.append("NE")
+                elif cfg["metric"] in ["Jain_Index"] :
+                    baseline = Jain_idx_ne * np.ones_like(y_data_2[0])
+
                     y_data_2.append(np.array(baseline))
 
                     func_group.append("NE")
@@ -848,17 +863,49 @@ except Exception:
 # -----------------------
 
 if st.button("📊 Run Simulation Table"):
+    with st.spinner("Simulating..."):
+        results_table = run_simulation_table_avg(cfg, GameKelly)
+        st.success("Done.")
+
+        st.session_state.results_table = results_table
+        st.session_state.config = cfg
+        #display_results_streamlit_dict(results_table, cfg, save_path="results/table_results.csv")
+
+if "results_table" in st.session_state:
     try:
-        with st.spinner("Simulating..."):
-            results = run_simulation_table_avg(cfg, GameKelly)
-            display_results_streamlit_dict(results, cfg, save_path="results/table_results.csv")
+        results_table = st.session_state.results_table
+        display_results_streamlit_dict(results_table, cfg, save_path="results/table_results.csv")
     except Exception:
         st.info("ℹ️ No results available yet. Please press **📊 Run Simulation Table** to start.")
-    #st.session_state.results = results
-    #st.session_state.config = cfg
-#if st.button("▶️ Run Simulation Gamma n"):
-#    with st.spinner("Simulating..."):
-#        #runner = SimulationRunner(cfg)
-#        plot_results_multi_gamma_go(cfg, metric=cfg["metric"])
 
+if st.button("📈 Run Jain(gamma)"):
 
+    with st.spinner("Running Jain index simulations over γ and n..."):
+        jain_results, gamma_grid = run_jain_vs_gamma(cfg, GameKelly)
+    st.success("Done.")
+
+    st.session_state.jain_results = jain_results
+    st.session_state.config = cfg
+    st.session_state.gamma_grid = gamma_grid
+
+if 'jain_results' in st.session_state:
+    # --- Retrieve data from session ---
+    jain_results = st.session_state.jain_results
+    config = st.session_state.config
+    gamma_grid = st.session_state.gamma_grid
+
+    fig = plot_jain_vs_gamma(jain_results, gamma_grid, config)
+    st.plotly_chart(fig, use_container_width=True)
+    st.subheader("📂 Download Outputs")
+    figpath_plot = plotGame_Jain(cfg,jain_results, gamma_grid,
+    ylog_scale=False, fontsize=40, markersize=40, linewidth=12,
+    linestyle="-", pltText=False, step=1,tol=1e-6
+)
+    btn_cols = st.columns(1)
+    try:
+        with open(figpath_plot, "rb") as f1:
+            btn_cols[0].download_button("⬇️ Plot PDF", f1, file_name=figpath_plot)
+    except:
+        st.info("PDF files not available yet.")
+    else:
+         st.info("ℹ️ No results yet. Click 📈 Run Jain(gamma) to start.")
