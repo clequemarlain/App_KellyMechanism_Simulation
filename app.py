@@ -101,7 +101,7 @@ with st.sidebar:
     # 🎯 Metric to visualize
     # ------------------------
     metrics_all = [
-        "Relative_Efficienty_Loss","Avg_Payoff",  "Speed", "Potential", "Pareto", "Payoff", "Bid",
+        "Relative_Efficienty_Loss","Avg_Payoff","Payoff", "epsilon_error",   "Speed",  "Bid", "Potential", "Pareto",
         "SW","Jain_Index", "LSW", "Dist_To_Optimum_SW", "Avg_Bid",  "Res_Payoff"
     ]
     cfg["metric"] = st.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
@@ -126,7 +126,7 @@ with st.sidebar:
         cfg["c"] = st.number_input("c (base budget)", 1e-4, 1e6, float(cfg["c"]), step=10.0)
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 0.0, 100.0, float(cfg["epsilon"]), step=0.05)
-        cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"])/(cfg["c"] - cfg["epsilon"]), step=1e-6)
+        cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6)
 
         # Heterogeneity vectors
         cfg["a_vector"] = st.text_area(
@@ -151,11 +151,11 @@ with st.sidebar:
     # ------------------------
     # 🧠 Learning methods
     # ------------------------
-    lr_methods_all = ["DAQ", "OGD", "SBRD", "DAE", "RRM", "Hybrid",  "XL", "NumSBRD", ]
+    lr_methods_all = ["DAQ_F", "DAQ_V", "OGD_F", "OGD_F", "OGD_V", "SBRD", "DAE",  "RRM_V", "Hybrid",  "XL", "NumSBRD", ]
     selected_methods = st.multiselect(
         "Select learning methods",
         lr_methods_all,
-        default=["OGD","DAQ","RRM", "DAE", "SBRD"]
+        default=[ "DAQ_F", "DAQ_V",  "RRM_V", "OGD_F", "OGD_V","SBRD"]
     )
     # ✅ If "Hybrid" is selected, keep only "Hybrid"
     if "Hybrid" in selected_methods:
@@ -171,7 +171,7 @@ with st.sidebar:
     # --- Default LR ---
     cfg["num_lrmethod"] = 0
 
-    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD" and  selected_methods[0]!="RRM":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
+    if len(selected_methods) == 1 and selected_methods[0]!="Hybrid" and selected_methods[0]!="SBRD" and  selected_methods[0]!="RRM_nt":#and selected_methods[0] != "Hybrid" and selected_methods[0] != "SBRD":
         # Number of learning rates for the single method
         num_lrmethod = st.number_input(
             "Number of learning rates",
@@ -221,13 +221,13 @@ with st.sidebar:
             cfg["Learning_rates"] = [cfg["eta"]] * len(selected_methods)
 
         for i,lr in enumerate(selected_methods):
-            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" and selected_methods[i]!="RRM" :
+            if selected_methods[i]!="SBRD" and selected_methods[i]!="Hybrid" and selected_methods[i]!="RRM_nt" :
                 LEGENDS.append(rf"{selected_methods[i]}")# -- $\eta={lr}$")
             if selected_methods[i]=="SBRD"   :
 
                 LEGENDS.append(selected_methods[i])
     # Only run this block if RRM is selected
-    if "RRM" in selected_methods:
+    if "RRM_nt" in selected_methods:
         # --- Defaults + UI input ---
         default_rrm_rates = cfg.get("RRM_lr", [cfg["eta"]])
         rates_str_default = ", ".join(str(x) for x in default_rrm_rates)
@@ -249,18 +249,18 @@ with st.sidebar:
 
         # --- Expand the selected methods at the RRM position ---
         # Remember first RRM position
-        first_idx = selected_methods.index("RRM")
+        first_idx = selected_methods.index("RRM_nt")
 
         # Remove all RRM occurrences
-        selected_methods = [m for m in selected_methods if m != "RRM"]
-        cfg["Learning_rates"] = [m for m in cfg["Learning_rates"] if m != "RRM"]
-        LEGENDS = [m for m in LEGENDS if m != "RRM"]
+        selected_methods = [m for m in selected_methods if m != "RRM_nt"]
+        cfg["Learning_rates"] = [m for m in cfg["Learning_rates"] if m != "RRM_nt"]
+        LEGENDS = [m for m in LEGENDS if m != "RRM_nt"]
 
         # Insert one RRM per rate, preserving the original position
         for i, lr in enumerate(cfg["RRM_lr"]):
-            selected_methods.insert(first_idx + i, "RRM")
+            selected_methods.insert(first_idx + i, "RRM_nt")
             cfg["Learning_rates"].insert(first_idx + i, lr)
-            LEGENDS.insert(first_idx + i, rf"RRM_{lr}")
+            LEGENDS.insert(first_idx + i, rf"RRM_nt_{lr}")
 
         # Update cfg
         cfg["lrMethods"] = selected_methods
@@ -623,11 +623,12 @@ try:
         # 📘 Step 3: Format layout
         # =====================================================
         y_label_map = {
-            "Speed": rf"Dist2NE",
+            "Speed": str(rf"$||BR(z(t) -z(t)||_2$"),
             "LSW": "LSW",
             "SW": "Social Welfare ",
             "Bid": "Player Bid",
             "Avg_Bid": "Average Bid",
+            "epsilon_error": rf"$\epsilon(z(t))$",
             "Jain_Index": "Jain Index",
             "Payoff": "Player's Payoff",
             "Avg_Payoff": "Average Payoff",
@@ -654,8 +655,7 @@ try:
         x_ne = results['optimal']["x_ne"]
         z_ne = results['optimal']["z_ne"]
 
-        payoff_ne = Payoff(x_ne, z_ne, cfg["a"], cfg["d_vector"], cfg["alpha"], cfg["price"])
-
+        payoff_ne = results['optimal']["payoff_ne"]
         Valuation_ne = Valuation(x_ne, cfg["a"], cfg["d_vector"], cfg["alpha"])
         SW_ne = results['optimal']["SW_NE"]
         Jain_idx_ne = results["optimal"]["Jain_index_NE"]
@@ -674,7 +674,7 @@ try:
                 # baseline: une ligne plate de payoff_opt avec la bonne longueur
 
                 if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                    baseline = payoff_ne * np.ones_like(y_data_2[0])
                     y_data_2.append(baseline)
 
 
@@ -697,10 +697,8 @@ try:
             save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
             try:
                 xlab = rf"$\alpha_{{{cfg["Hybrid_funcs"][0][0]}}}$"
-                print(y_data)
-
                 figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg,x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
-                                                        saveFileName=save_to,fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                        saveFileName=save_to,fontsize=45, markersize=45, linewidth=12,linestyle="--",
                                                             ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
             except Exception:
                 print("")
@@ -710,7 +708,7 @@ try:
 
             x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
             if num_hybrid_set>1:
-                x_data_2 = np.array(cfg["Nb_A1"][:num_hybrid_set]) / cfg["n"] *100
+                x_data_2 = np.array(cfg["Nb_A1"][:num_hybrid_set]) / cfg["n"] * 100
             y_data_2 = y_data.copy()
             y_data_2 = [el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
                         for el in y_data_2]
@@ -723,26 +721,37 @@ try:
 
 
                 if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                    baseline = payoff_ne * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
 
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
                 elif cfg["metric"] in ["Bid", "Avg_Bid"] :
                     baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
 
-                    func_group.append("NE")
+                elif cfg["metric"] in ["Speed"]:
+                    cfg["y_label"] = str(rf"$||BR(z(T) -z(T)||_2$")
+                    baseline = Residual_ne * np.ones_like(y_data_2[0])
+                    y_data_2.append(np.array(baseline))
+
+                    func_group.append("Non-hybrid")
                 elif cfg["metric"] in ["Jain_Index"] :
                     baseline = Jain_idx_ne * np.ones_like(y_data_2[0])
 
                     y_data_2.append(np.array(baseline))
 
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
                 elif cfg["metric"] == "Relative_Efficienty_Loss":
                     cfg["y_label"] = r"$\rho(z(T))$"
                     baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
+                elif cfg["metric"] == "epsilon_error":
+                    cfg["y_label"] = r"$\epsilon(z(T))$"
+                    baseline = cfg["tol"] * np.ones_like(y_data_2[0])
+                    y_data_2.append(np.array(baseline))
+                    func_group.append("Non-hybrid")
+
                 figpath_plot, figpath_zoom, figpath_legend = plotGame_Hybrid_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"],
                                                                                    cfg["lrMethods"],
                                                                                    saveFileName=save_to2, funcs_=func_group,
@@ -763,18 +772,23 @@ try:
                     y_data_2.append(np.array(baseline))
                     func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
                 elif cfg["metric"] in ["Bid", "Avg_Bid"] :
                     baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
                     func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
                 elif cfg["metric"] in ["Relative_Efficienty_Loss"]:
                     cfg["y_label"] = r"$\rho(z(T))$"
                     baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
-                    func_group.append("NE")
+                    func_group.append("Non-hybrid")
+                elif cfg["metric"] == "epsilon_error":
+                    cfg["y_label"] = r"$\epsilon(z(T))$"
+                    baseline = cfg["tol"] * np.ones_like(y_data_2[0])
+                    y_data_2.append(np.array(baseline))
+                    func_group.append("Non-hybrid")
 
                 save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
                 #xlab = rf"$A\alpha_{{{funcs_[0]}}}$"

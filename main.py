@@ -54,18 +54,33 @@ class SimulationRunner:
         LSW_opt = torch.sum(torch.minimum(Valuation_log_opt, c_vector)).detach().numpy()
 
 
+        s_min = (n-1) * epsilon  + self.config["delta"]
+        s_max = (n-1) * c + self.config["delta"]
+        z_max = BR_alpha_fair(eps, c_vector, bid0, s_min, a_vector, delta, alpha, price, b=0)
+        x_max =  z_max/(z_max+ s_min)
+
+        #z_min = BR_alpha_fair(eps, c_vector, bid0, s_max, a_vector, delta, alpha, price, b=0)
+        x_min = eps / (eps + s_max)
+        x_min_2 = c_vector / (c_vector + s_max)
+
+        Payoff_min = torch.min(Payoff(x_min, eps, a_vector, d_vector, alpha, price), Payoff(x_min_2, c_vector, a_vector, d_vector, alpha, price))
+        Payoff_max = torch.max(Payoff(x_max, z_max, a_vector, d_vector, alpha, price))
+
         # Réinitialiser les placeholders
         progress_bar = st.progress(0)
         status_text = st.empty()
-        game_set = GameKelly(n, price, eps, delta, alpha, tol)
+        game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
-            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True,
+            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True
         )
         z_ne =  Bids_Opt[0][-1]
         jain_index_ne = Bids_Opt[2][-1]
         x_ne = z_ne/(torch.sum(z_ne) + self.config["delta"])
         Valuation_ne = Valuation(x_ne, a_vector, d_vector, alpha)
         SW_ne = (torch.sum(Valuation_ne))
+        payoff_ne = Payoff(x_ne, z_ne, a_vector, d_vector, alpha, price)
+        payoff_ne_norm = (payoff_ne - Payoff_min) / (Payoff_max - Payoff_min)
+
         Potential_ne = log_potential(z_ne,a_vector,price)
         Residual_ne = error_NE_set_Opt[-1]
         self.results = {
@@ -77,6 +92,7 @@ class SimulationRunner:
                 'x_opt': x_log_optimum.detach().numpy(),
                 'z_ne' : z_ne,
                 'x_ne' : x_ne,
+                'payoff_ne' : payoff_ne_norm.detach().numpy(),
                 "Potential_ne":  Potential_ne.detach().numpy(),
                 "Residual_ne" : Residual_ne.detach().numpy(),
                 "Jain_index_NE": jain_index_ne.detach().numpy(),
@@ -108,11 +124,6 @@ class SimulationRunner:
                 if lrMethod == "Hybrid" :
                     NbHybrid = NbHybrid+1
 
-                   # subset = random.sample(range(self.config["n"]), int(self.config["Nb_A1"][idx]))
-                   # remaining = [i for i in range(self.config["n"]) if i not in subset]
-                   # if self.config["Random_set"] and NbHybrid == 1:
-                   #     Hybrid_sets = [subset, remaining]
-                    #else:
                     Hybrid_sets = Global_Hybrids_set[(NbHybrid-1)%self.config["num_hybrids"]]#make_subset(self.config["n"],NbHybrid)# self.config["Hybrid_sets"][NbHybrid-1]
                     Hybrid_funcs = self.config["Hybrid_funcs"][NbHybrid-1]
                     #print(NbHybrid)
@@ -125,8 +136,8 @@ class SimulationRunner:
                     idx += 1
 
                 elif lrMethod != "SBRD": #self.config["num_lrmethod"]!=0:
-                    if lrMethod == "RRM":
-                        lrMethod2 = f"RRM_{self.config["RRM_lr"][idx_rmfq]}"
+                    if lrMethod == "RRM_nt":
+                        lrMethod2 = f"RRM_nt_{self.config["RRM_lr"][idx_rmfq]}"
                         idx_rmfq += 1
                     else:
                         lrMethod2 = rf"{lrMethod}"# -- $\eta={self.config["Learning_rates"][idxMthd]}$"
@@ -137,7 +148,7 @@ class SimulationRunner:
                    # idx += 1
 
 
-                game_set = GameKelly(n, price, eps, delta, alpha, tol)
+                game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
                 Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
                     lrMethod, a_vector, c_vector, d_vector, T, self.config["Learning_rates"][idxMthd], bid0,
                     vary=lr_vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
@@ -147,6 +158,9 @@ class SimulationRunner:
                 Pareto_check =   (Welfare[2] -Valuation_log_opt*torch.ones_like(Welfare[2]) ) + (z_sol_equ*torch.ones_like(Bids[0]) - Bids[0])
                 LSW = Welfare[1]
                 Relative_Efficienty_Loss = torch.abs((SocialWelfare - SW_opt)/SW_opt) * 100
+
+                Payoff_Norm = (Utility_set[0] - Payoff_min)/(Payoff_max - Payoff_min )
+                AvgPayoff_norm = (Utility_set[1] - Payoff_min ) /(Payoff_max - Payoff_min)
                 # --- Prepare one simulation result ---
                 sim_result = {
                     'Speed': error_NE_set.detach().numpy(),
@@ -161,9 +175,10 @@ class SimulationRunner:
                     'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
 
                     'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
-                    'Payoff': Utility_set[0].detach().numpy(),
+                    'Payoff': Payoff_Norm.detach().numpy(), #Utility_set[0].detach().numpy(),#
+                    'epsilon_error': Utility_set[4].detach().numpy(),
                     'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
-                    'Avg_Payoff': Utility_set[1].detach().numpy(),
+                    'Avg_Payoff': AvgPayoff_norm.detach().numpy(), # Utility_set[1].detach().numpy(),
                     'Res_Payoff': Utility_set[2].detach().numpy(),
                     'Potential': Utility_set[3].detach().numpy(),
                     'final_bids': Bids[0][-1].detach().numpy(),

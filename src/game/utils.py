@@ -29,38 +29,59 @@ colors = [
     "darkcyan",  # Cyan foncé
     "indigo",  # Bleu indigo
 ]
-METHODS = ["DAQ", "DAE", "OGD", "SBRD", "RRM", "RRM_0.3"]
-COLORS_METHODS = {
-   "DAQ"  : "darkorange",  # Orange foncé
-   "DAE"  : "royalblue",  # Bleu vif
-   "OGD"  : "green",  # Vert
-   "SBRD" : "purple",  # Violet
-    "RRM":    "magenta",  # Magenta
-    "RRM_0.3": "magenta",  # Magenta
+METHODS = [
+    rf"DAQ$_F$", rf"DAQ$_V$",
+    "DAE",
+    rf"OGD$_F$", rf"OGD$_V$",
+    "SBRD",
+    rf"RRM$_F$", rf"RRM$_V$"
+]
+
+legend_map = {
+    "RRM_V": rf"RRM$_V$",
+    "RRM_F": rf"RRM$_F$",
+    "DAQ_V": rf"DAQ$_V$",
+    "DAQ_F": rf"DAQ$_F$",
+    "OGD_V": rf"OGD$_V$",
+    "OGD_F": rf"OGD$_F$",
 }
 
+COLORS_METHODS = {
+    rf"DAQ$_F$": "darkorange",   # dark orange
+    rf"DAQ$_V$": "brown",   # lighter orange (same hue family)
+
+    "DAE": "#3182bd",         # royal blue
+
+    rf"OGD$_F$": "green",   # medium green
+    rf"OGD$_V$": "teal",   # lighter green
+
+    "SBRD": "purple",        # violet
+
+    rf"RRM$_F$": "slategray",   # dark gray
+    rf"RRM$_V$": "magenta"#"royalblue",   # lighter gray, same tone family
+}
+
+MARKERS_METHODS = {
+    rf"DAQ$_F$": "s",             # square
+    rf"DAQ$_V$": "D",             # pentagon (close shape)
+    "DAE": "x",                   # triangle up
+    rf"OGD$_F$": "v",             # triangle down
+    rf"OGD$_V$": "^",             # triangle marker variant
+    "SBRD": "*",                  # diamond
+    rf"RRM$_F$": "H",             # hexagon
+    rf"RRM$_V$": "p",             # star
+}
+
+
+
+markers = [ "d","p", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
+markers22 = ["H", "d","*","p"]
 colors22 = [
-
-
-
     "slategray",  # Gris ardoise
     "brown",  # Marron
     "magenta",  # Magenta
     "teal",  # Bleu-vert
 ]
-MARKERS_METHODS = {
-    "DAQ": "s",  # Orange foncé
-    "DAE": "^",  # Bleu vif
-    "OGD": "v",  # Vert
-    "SBRD": "D", # Violet
-    "RRM": "*",
-    "RRM_0.3": "*",
-}
-
-
-
-markers = ["H", "d","p", "s", "^", "v", "D", "*", "p", "x", "+", "|","s", "^", "v", "D", "*", "p", "x", "+", "|"]
-markers22 = ["H", "d","*","p"]
 def make_subset(n, h):
     """
     Retourne un couple [subset, remaining] basé sur n et h.
@@ -385,11 +406,46 @@ def compute_G_DAE(a_i, delta, epsilon,c, n):
     G_max = G_vals[name_max]
     G = G_max#np.sqrt(G_max)
     return G
+def max_diag_grad_norm(a_vec, c, eps, delta):
+    """
+    Compute G = max_{z in [1,c]^n} || (∂φ_i/∂z_i)_i ||_2
+    for φ_i(z) = a_i log(z_i / (sum(z)+δ)) + d_i - z_i.
 
+    Parameters
+    ----------
+    a_vec : array-like, shape (n,)
+        Positive coefficients a_i.
+    c : float
+        Upper bound of the box [1, c], with c >= 1.
+    delta : float
+        Positive constant δ.
+
+    Returns
+    -------
+    G : float
+        Exact maximum of the 2-norm over the box [1,c]^n.
+    arg_info : dict
+        Information about the maximizing corner:
+        - 'K': number of variables set to c
+        - 's': s_K = δ + K*c + (n-K)*1
+        - 'z_pattern': array of {1,c} giving one maximizing assignment
+    """
+    a = a_vec# np.asarray(a_vec, dtype=float)
+    n = a.shape[-1]
+
+    best_val = -np.inf
+    best_info = None
+    s_min = (n-1) * eps +delta
+    s_max = (n-1) * c + delta
+    f_min = torch.max(torch.sqrt(torch.sum(((a_vec *(1/eps) - 1 / s_min) - 1 )**2)), torch.sqrt(torch.sum(((a_vec *(1/c) - 1 / s_min) - 1 )**2)))
+    f_max = torch.max(torch.sqrt(torch.sum(((a_vec * (1 / eps) - 1 / s_max) - 1) ** 2)),
+                      torch.sqrt(torch.sum(((a_vec * (1 / c) - 1 / s_max) - 1) ** 2)))
+    G =torch.max(f_min, f_max)
+    return G
 
 class GameKelly:
     def __init__(self, n: int, price: float,
-                 epsilon, delta, alpha, tol):
+                 epsilon, delta, alpha, tol, payoff_min=None,payoff_max=None):
 
 
         self.n = n
@@ -400,6 +456,8 @@ class GameKelly:
         self.delta = delta
         self.alpha = alpha
         self.tol = tol
+        self.payoff_min = payoff_min
+        self.payoff_max = payoff_max
 
     def fraction_resource(self, z):
         return z / (torch.sum(z) + self.delta)
@@ -419,14 +477,31 @@ class GameKelly:
         p = torch.sum(z) - z + self.delta
         if self.alpha  not in [0,1,2]:
             z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
-            err = torch.norm(z_br - z)/torch.norm(c_vector - self.epsilon)#, self.tol * torch.ones(1))
+            err = torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
         else:
             z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
                                             a_vector, self.delta, self.alpha, self.price,
                                             b=0)
-            err =  torch.norm(z_br - z)/torch.norm(c_vector - self.epsilon)#, self.tol * torch.ones(1))
+            err =  torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
 
         return err   # torch.norm(self.grad_phi(z))
+
+    def epsilon_error(self, z: torch.tensor, a_vector, c_vector, d_vector,):
+        p = torch.sum(z) - z + self.delta
+        if self.alpha  not in [0,1,2]:
+            z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
+            payoff_zbr = Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price)
+            payoff_z = Payoff(self.fraction_resource(z), z, a_vector, d_vector, self.alpha, self.price)
+            err = torch.abs(payoff_zbr - payoff_z)#torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
+        else:
+            z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
+                                            a_vector, self.delta, self.alpha, self.price,
+                                            b=0)
+            payoff_zbr = (Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
+            payoff_z = (Payoff(self.fraction_resource(z), z, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
+            err = torch.abs(payoff_zbr - payoff_z)
+
+        return torch.max(torch.max(err), torch.tensor(self.tol))   # torch.norm(self.grad_phi(z))
 
     def AverageBid(self, z,t):
         z_copy = z.clone()
@@ -483,7 +558,7 @@ class GameKelly:
 
 
 
-    def OGD2(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def OGD_V(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -491,17 +566,19 @@ class GameKelly:
             return a_vector * V - self.price * z + d_vector
 
         grad_t = self.grad_phi(phi, bids)
+        D = c_vector - self.epsilon ##np.linalg.norm(c_vector - self.epsilon)  # si c est borne sup
+        # Constante Lipschitz
+        n = len(bids)
+        G = torch.zeros_like(a_vector)
+        for i in range(n):
+            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
 
-
-        if vary:
-            eta_t = 1 / (t ** eta) if t > 0 else eta
-        else:
-            eta_t = D / (G * np.sqrt(self.T))
+        eta_t = D / (2 * G * np.sqrt(t))
         z_candidate = bids + eta_t * grad_t
         z_t = Q1(z_candidate, self.epsilon, c_vector, self.price)
         return z_t, acc_grad
 
-    def OGD(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,
+    def OGD_F(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,
             p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
@@ -516,9 +593,6 @@ class GameKelly:
 
         # Constante Lipschitz
         n = len(bids)
-        # ⚠️ ici je suppose a_vector est scalaire (pour un joueur).
-        # Si c’est un vecteur (multi-joueur), on prend max(a_i).
-        a_i = torch.max(a_vector)
         G = torch.zeros_like(a_vector)
         for i in range(n):
             G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
@@ -535,8 +609,7 @@ class GameKelly:
         z_t = Q1(z_candidate, self.epsilon, c_vector, self.price)
 
         return z_t, acc_grad
-
-    def RRM(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def RRM_F(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -547,28 +620,17 @@ class GameKelly:
         grad_t = self.grad_phi(phi, bids)
         n = len(bids)
 
-        D = torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
-        # ⚠️ ici je suppose a_vector est scalaire (pour un joueur).
-        # Si c’est un vecteur (multi-joueur), on prend max(a_i).
-        a_i = torch.max(a_vector)
+        D = c_vector -  self.epsilon #torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
         G = torch.zeros_like(a_vector)
         for i in range(n):
             G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
-       # if vary:
-        eta_t = a_vector/t**eta if t > 0 else eta
-       # else:
-        #eta_t = D / (G * np.sqrt(t))
-
-         #eta_t = D *np.sqrt(2 / self.T)/torch.norm(G)
-
-
-
+        #G = max_diag_grad_norm(a_vector, c_vector,self.epsilon, self.delta)
+        eta_t =  D / (G * np.sqrt(self.T))
         acc_grad_copy += grad_t * eta_t
         z_t = Q1(acc_grad_copy, self.epsilon, c_vector, self.price)
         return z_t, acc_grad_copy
-
-    def DAQ(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def RRM_V(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -579,23 +641,59 @@ class GameKelly:
         grad_t = self.grad_phi(phi, bids)
         n = len(bids)
 
-        D = torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
-        # ⚠️ ici je suppose a_vector est scalaire (pour un joueur).
-        # Si c’est un vecteur (multi-joueur), on prend max(a_i).
-        a_i = torch.max(a_vector)
+        D = c_vector -  self.epsilon # si c est borne sup
         G = torch.zeros_like(a_vector)
         for i in range(n):
             G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
 
-        if vary:
-        # Step-size (theorem 3.1 Hazan)
-            eta_t = 100/t**eta if t > 0 else eta
-        else:
-            eta_t =  D / (G * np.sqrt(self.T))  #self.T fallback pour t=0
-
-
+        eta_t = D / (2 * G * np.sqrt(t))
         acc_grad_copy += grad_t * eta_t
         z_t = Q1(acc_grad_copy, self.epsilon, c_vector, self.price)
+        return z_t, acc_grad_copy
+    def DAQ_V(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+
+        def phi(z):
+            x = self.fraction_resource(z)
+            V = V_func(x, self.alpha)
+            return a_vector * V - self.price * z + d_vector
+
+        acc_grad_copy = acc_grad.clone()
+        grad_t = self.grad_phi(phi, bids)
+        n = len(bids)
+
+        D = c_vector -  self.epsilon #torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
+
+        G = torch.zeros_like(a_vector)
+        for i in range(n):
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+        eta_t = D / (2*G * np.sqrt(t))
+
+        acc_grad_copy += grad_t
+        z_t = Q1(acc_grad_copy * eta_t, self.epsilon, c_vector, self.price)
+        return z_t, acc_grad_copy
+
+    def DAQ_F(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+
+        def phi(z):
+            x = self.fraction_resource(z)
+            V = V_func(x, self.alpha)
+            return a_vector * V - self.price * z + d_vector
+
+        acc_grad_copy = acc_grad.clone()
+        grad_t = self.grad_phi(phi, bids)
+        n = len(bids)
+
+        D = c_vector -  self.epsilon#torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
+        G = torch.zeros_like(a_vector)
+        for i in range(n):
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+
+        # Step-size (theorem 3.1 Hazan)
+
+        eta_t =  D / (G * np.sqrt(self.T))  #self.T fallback pour t=0
+
+        acc_grad_copy += grad_t
+        z_t = Q1(acc_grad_copy * eta_t, self.epsilon, c_vector, self.price)
         return z_t, acc_grad_copy
 
     def DAE(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad,p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
@@ -607,7 +705,6 @@ class GameKelly:
         acc_grad_copy = acc_grad.clone()
         grad_t = self.grad_phi(phi, bids)
         # Taille de domaine (diamètre) : borne supérieure
-
 
         # Constante Lipschitz
         n = len(bids)
@@ -624,7 +721,8 @@ class GameKelly:
         # Step-size (theorem 3.1 Hazan)
         if vary:
             # Step-size (theorem 3.1 Hazan)
-            eta_t = 100/t**eta if t > 0 else eta
+            eta_t = D / (G * np.sqrt(3000))  # fallback pour t=0
+            #eta_t = 100/t**eta if t > 0 else eta
         else:
             eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
         acc_grad_copy += grad_t * eta_t
@@ -681,6 +779,7 @@ class GameKelly:
         vec_SW = torch.zeros(n_iter + 1, dtype=torch.float64)
         potential = vec_SW.clone()
         jain_idx = vec_SW.clone()
+        eps_error = vec_SW.clone()
         utiliy = torch.zeros((n_iter + 1, self.n), dtype=torch.float64)
         utiliy_residual = utiliy.clone()
         valuation = utiliy.clone()
@@ -688,7 +787,8 @@ class GameKelly:
         matrix_bids[0] = bids.clone()
         jain_idx[0] = self.Jain_index(bids)
 
-        error_NE[0] = self.check_NE(bids,a_vector, c_vector, d_vector)
+        error_NE[0] = self.check_NE(bids, a_vector, c_vector, d_vector)
+        eps_error[0] = self.epsilon_error(bids, a_vector, c_vector, d_vector)
         utiliy[0] = Payoff(self.fraction_resource(matrix_bids[0]), matrix_bids[0], a_vector, d_vector, self.alpha, self.price)
         valuation[0] = Valuation(self.fraction_resource(matrix_bids[0]), a_vector, d_vector, self.alpha)
         vec_LSW[0] = LSW_func(self.fraction_resource(matrix_bids[0]), c_vector, a_vector, d_vector, self.alpha)
@@ -698,6 +798,7 @@ class GameKelly:
         utiliy_residual[0] = torch.abs(utiliy[0] - Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price))
         potential[0] =  log_potential(matrix_bids[0],a_vector,self.price)
 
+
         k = 0
 
         for t in range(1, n_iter + 1):
@@ -706,7 +807,8 @@ class GameKelly:
             p = torch.sum(matrix_bids[t-1]) - matrix_bids[t-1] + self.delta
             matrix_bids[t], acc_grad = func(t, a_vector, c_vector, d_vector, eta, matrix_bids[t-1], acc_grad, p=p, vary=vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets)
             jain_idx[t] = self.Jain_index(matrix_bids[t])
-            error_NE[t] = self.check_NE(matrix_bids[t], a_vector, c_vector, d_vector,)
+            error_NE[t] = self.check_NE(matrix_bids[t], a_vector, c_vector, d_vector)
+            eps_error[t] = self.epsilon_error(matrix_bids[t], a_vector, c_vector, d_vector)
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
 
             z_br = BR_alpha_fair(self.epsilon, c_vector, matrix_bids[t], p, a_vector, self.delta, self.alpha, self.price, b=0)
@@ -726,12 +828,12 @@ class GameKelly:
         sw = torch.sum(utiliy[:k, :], dim=1); lsw = vec_LSW[:k]
         agg_utility = torch.cumsum(utiliy[:k, :], dim=0)
 
-        agg_utility = agg_utility / col.unsqueeze(1).expand(-1,self.n)
+        agg_utility = agg_utility / col.unsqueeze(1).expand(-1, self.n)
 
-        Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :], potential[:k]]
+        Utility_set = [utiliy[:k, :], agg_utility[:k, :], utiliy_residual[:k, :], potential[:k], eps_error[:k]]
 
         Welfare = [vec_SW[:k], vec_LSW[:k], valuation[:k]]
-        return Bids, Welfare, Utility_set, torch.maximum(error_NE[:k],torch.tensor(self.tol))  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
+        return Bids, Welfare, Utility_set, torch.maximum(error_NE[:k], torch.tensor(self.tol))  #matrix_bids[:k, :], vec_LSW[:k], error_NE[:k], Avg_bids[:k, :], utiliy[:k, :]
 
 
 def plotGame(config,
@@ -750,11 +852,14 @@ def plotGame(config,
 
     # --- Plot curves ---
     l=0
+
+    legends = [legend_map.get(l, l) for l in legends]
     for i, legend in enumerate(legends):
         color = "red" if legends[i] == "NE" else colors[i]
         marker = "" if legends[i] ==  "NE" else markers[i]
 
         if legends[i] in METHODS:
+
             color = COLORS_METHODS[legends[i]]
             marker = MARKERS_METHODS[legends[i]]
         y_data_i = y_data[i][:config["T_plot"]]
@@ -901,13 +1006,16 @@ def plotGame(config,
         ax_zoom.set_yscale("log")  # ✅ logarithmic Y-scale if needed
     for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
         label.set_fontweight("bold")
+    if config.get("metric", "") == "Relative_Efficienty_Loss":
+        # Affiche les ticks en pourcentage (0–100%)
+        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=4))
     ax_zoom.tick_params(axis="both", labelsize=2*markersize)
     ax_zoom.set_ylabel("", fontweight="bold")
     ax_zoom.yaxis.label.set_size(1.5*markersize)
     ax_zoom.set_xlabel(f"", fontweight="bold")
 
     ax_zoom.set_xticks([])  # Supprime les graduations
-    ax_zoom.set_yticks([])  # Supprime les graduations
+   # ax_zoom.set_yticks([])  # Supprime les graduations
     ax_zoom.set_xlabel("")  # Supprime le label
     ax_zoom.spines["bottom"].set_visible(False)  # Cache la ligne de l’axe
 
@@ -945,7 +1053,7 @@ def plotGame_dim_N(
         colors = ["#1f77b4","#ff7f0e","#2ca02c","#d62728","#9467bd","#8c564b","#e377c2","#7f7f7f","#bcbd22","#17becf"]
     if 'markers' not in globals():
         markers = ["o","s","D","^","v","<",">","P","X","*"]
-
+    legends = [legend_map.get(l, l) for l in legends]
     # --- Préparation données ---
     y_data = np.array(y_data, dtype=object)
     Tm = min(config.get("T_plot", len(x_data)), len(x_data))
@@ -1132,7 +1240,7 @@ def plotGame_Hybrid_last(config,
     y_data_Hybrid = y_data
 
     plt.rcParams.update({'font.size': fontsize})
-
+    funcs_ = [legend_map.get(l, l) for l in funcs_]
     if ylog_scale:
         plt.yscale("log")
 
@@ -1146,23 +1254,22 @@ def plotGame_Hybrid_last(config,
 
 
 
-    funcNo_NE = [i for i in funcs_ if i!="NE"]
-    if "RRM" in funcNo_NE:
-        idx = funcNo_NE.index("RRM")
-        funcNo_NE[idx] = "RRM_0.3"
-
+    funcNo_NE = [i for i in funcs_ if i!="Non-hybrid"]
+    if "RRM_nt" in funcNo_NE:
+        idx = funcNo_NE.index("RRM_nt")
+        funcNo_NE[idx] = "RRM_nt"
 
 
     for j, fc in enumerate(funcs_):
 
-        color = "red" if fc == "NE" else colors[j]
-        marker = "" if fc ==  "NE" else markers[j]
+        color = "red" if fc == "Non-hybrid" else colors[j]
+        marker = "" if fc ==  "Non-hybrid" else markers[j]
 
 
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
-        if  fc != "NE":
+        if  fc != "Non-hybrid":
             legend_handles.append(
                 Line2D([0], [0], color=color,
                        marker=marker,
@@ -1172,7 +1279,7 @@ def plotGame_Hybrid_last(config,
                        linewidth=linewidth)
             )
 
-        if fc == "NE":
+        if fc == "Non-hybrid":
             # tracer une ligne horizontale rouge à la valeur k
             continue
 
@@ -1210,13 +1317,13 @@ def plotGame_Hybrid_last(config,
     # légendes et labels
     # légendes et labels
 
-    if funcs_[-1]== "NE":
+    if funcs_[-1]== "Non-hybrid":
         plt.axhline(
             y=curve_NE,
             color="red",
             linestyle=linestyle,
             linewidth=linewidth,
-            label=f"NE"
+            label=f"Non-hybrid"
         )
 
         if pltText:
@@ -1287,21 +1394,21 @@ def plotGame_Hybrid_last(config,
     ax_zoom = fig_zoom.add_subplot(111)
 
     for i,fc in enumerate(funcs_):
-        color = "red" if fc == "NE" else colors[j]
-        marker = "" if fc == "NE" else markers[j % len(markers)]
+        color = "red" if fc == "Non-hybrid" else colors[j]
+        marker = "" if fc == "Non-hybrid" else markers[j % len(markers)]
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
         #n = y_data[i].shape[1]
 
-        if fc == "NE":
+        if fc == "Non-hybrid":
             # tracer une ligne horizontale rouge à la valeur k
             ax_zoom.axhline(
                 y=curve_NE,
                 color="red",
                 linestyle=linestyle,
                 linewidth=linewidth,
-                label=f"NE"
+                label=f"Non-hybrid"
             )
 
         else:
