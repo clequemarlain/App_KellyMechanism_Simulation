@@ -307,7 +307,7 @@ with st.sidebar:
             method = st.multiselect(
                 f"Select Hybrid funcs ",
                 hybrid_options,
-                default=["SBRD","DAE"],
+                default=["SBRD","DAQ_V"],
                 key=f"hybrid_method_{i}"
             )
             #print(method)
@@ -766,9 +766,10 @@ try:
             else:
 
                 y_data_2 = y_data_2
+
                 # baseline: une ligne plate de payoff_opt avec la bonne longueur
                 if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                    baseline = payoff_ne * np.ones_like(y_data_2[0])
                     y_data_2.append(np.array(baseline))
                     func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 

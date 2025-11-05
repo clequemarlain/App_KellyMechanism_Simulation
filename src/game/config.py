@@ -1,7 +1,7 @@
 SIMULATION_CONFIG = {
     "lrMethods": ["DAQ","DAE","OGD","SBRD"],
     "Hybrid_funcs": ["DAQ", "DAE"],
-    "T": 2000,  # Number of iterations in the learning process
+    "T": 3000,  # Number of iterations in the learning process
     "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
     "n": 10,  # Number of players in the game
     "eta": 0.3,  # Step size for the learning update

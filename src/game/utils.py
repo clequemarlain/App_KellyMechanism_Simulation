@@ -1068,6 +1068,7 @@ def plotGame_dim_N(
     legend_labels  = []
 
     # Plot des méthodes (sauf NE)
+
     for i, name in enumerate(legends):
         is_NE = (name == "NE")
         if is_NE:
@@ -1481,13 +1482,15 @@ def plotGame_dim_N_last(config,
     y_data_Hybrid = y_data[0]
 
     plt.rcParams.update({'font.size': fontsize})
+    funcs_ = [legend_map.get(l, l) for l in funcs_]
+    print(legends)
     #print(y_data_Hybrid)
     if ylog_scale:
         plt.yscale("log")
 
     legend_handles = []
     curves = []
-    funcNo_NE = [i for i in funcs_ if i!="NE"]
+    funcNo_NE = [i for i in funcs_ if i!="Non-hybrid"]
 
     if config["num_hybrids"] != 1 and config["num_hybrid_set"]>1:
         for j, fc in enumerate(funcNo_NE):
@@ -1510,8 +1513,8 @@ def plotGame_dim_N_last(config,
 
     for j, fc in enumerate(funcNo_NE):
 
-        color = "red" if fc == "NE" else colors[j]
-        marker = "" if fc == "NE" else markers[j % len(markers)]
+        color = "red" if fc == "Non-hybrid" else colors[j]
+        marker = "" if fc == "Non-hybrid" else markers[j % len(markers)]
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
@@ -1556,14 +1559,14 @@ def plotGame_dim_N_last(config,
                 horizontalalignment="right")
 
     # légendes et labels
-    if funcs_[-1]== "NE":
+    if funcs_[-1]== "Non-hybrid":
 
         plt.axhline(
             y=curve_NE,
             color="red",
             linestyle=linestyle,
             linewidth=linewidth,
-            label=f"NE"
+            label=f"Non-hybrid"
         )
 
         if pltText:
@@ -1639,8 +1642,8 @@ def plotGame_dim_N_last(config,
     ax_zoom = fig_zoom.add_subplot(111)
 
     for i, fc in enumerate(funcNo_NE):
-        color = "red" if fc == "NE" else colors[j]
-        marker = "" if fc == "NE" else markers[j % len(markers)]
+        color = "red" if fc == "Non-hybrid" else colors[j]
+        marker = "" if fc == "Non-hybrid" else markers[j % len(markers)]
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
@@ -1676,14 +1679,14 @@ def plotGame_dim_N_last(config,
     # même axes que principal (pas de zoom)
     #ax_zoom.set_xlim(x_data[-2], x_data[-1])
     #ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
-    if funcs_[-1]== "NE":
+    if funcs_[-1]== "Non-hybrid":
 
         ax_zoom.axhline(
             y=curve_NE,
             color="red",
             linestyle=linestyle,
             linewidth=linewidth,
-            label=f"NE"
+            label=f"Non-hybrid"
         )
 
     for label in ax_zoom.get_xticklabels() + ax_zoom.get_yticklabels():
