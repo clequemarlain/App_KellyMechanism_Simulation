@@ -1483,7 +1483,6 @@ def plotGame_dim_N_last(config,
 
     plt.rcParams.update({'font.size': fontsize})
     funcs_ = [legend_map.get(l, l) for l in funcs_]
-    print(legends)
     #print(y_data_Hybrid)
     if ylog_scale:
         plt.yscale("log")
