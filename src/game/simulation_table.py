@@ -5,6 +5,7 @@ import csv
 import torch, csv, random
 import pandas as pd
 import numpy as np
+
 from collections import defaultdict
 #from tabulate import tabulate
 
@@ -51,6 +52,13 @@ def run_simulation_table_avg(config, GameKelly):
             idx = 0
             idx_rmfq =0
             bid0 = (c - epsilon) * torch.rand(n) + epsilon
+
+
+            Payoff_min = torch.tensor(0.2)
+
+            Payoff_max = torch.tensor(1)
+
+
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
                 minError_list = []
@@ -94,11 +102,11 @@ def run_simulation_table_avg(config, GameKelly):
                     if not config["keep_initial_bid"]:
                         bid0 = (c - epsilon) * torch.rand(n) + epsilon
 
-                    game_set = GameKelly(n, price, torch.tensor(epsilon), delta, alpha, tol)
+                    game_set = GameKelly(n, price, torch.tensor(epsilon), delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
 
                     Bids, Welfare, Utility_set, error_NE_set = game_set.learning(
                         lrMethod, a_vector, c_vector, d_vector, T, config["Learning_rates"][idxMthd], bid0,
-                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets
+                        vary=config["lr_vary"], Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets,
                     )
 
 
