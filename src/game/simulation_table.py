@@ -102,8 +102,8 @@ def run_simulation_table_avg(config, GameKelly):
                     )
 
 
-                    min_error = torch.min(error_NE_set)
-                    nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
+                    min_error = Utility_set[4][-1]
+                    nb_iter = int(torch.argmin(Utility_set[4]).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
                     minError_list.append(min_error)
 

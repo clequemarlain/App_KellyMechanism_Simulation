@@ -492,14 +492,14 @@ class GameKelly:
             z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
             payoff_zbr = Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price)
             payoff_z = Payoff(self.fraction_resource(z), z, a_vector, d_vector, self.alpha, self.price)
-            err = torch.abs(payoff_zbr - payoff_z)#torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
+            err = payoff_zbr - payoff_z#torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
         else:
             z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
                                             a_vector, self.delta, self.alpha, self.price,
                                             b=0)
             payoff_zbr = (Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
             payoff_z = (Payoff(self.fraction_resource(z), z, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
-            err = torch.abs(payoff_zbr - payoff_z)
+            err = payoff_zbr - payoff_z
 
         return torch.max(torch.max(err), torch.tensor(self.tol))   # torch.norm(self.grad_phi(z))
 
