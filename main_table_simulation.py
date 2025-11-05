@@ -6,6 +6,7 @@ import torch, csv, random
 import pandas as pd
 import numpy as np
 
+from src.game.utils import *
 from collections import defaultdict
 #from tabulate import tabulate
 
@@ -24,7 +25,7 @@ def run_simulation_table_avg(config, GameKelly):
     mu = config["mu"]
     c = config["c"]
     delta = config["delta"]
-    epsilon = config["epsilon"]
+    epsilon = torch.tensor(config["epsilon"])
     alpha = config["alpha"]
     tol = config["tol"]
     a_min = config["a_min"]
@@ -53,11 +54,18 @@ def run_simulation_table_avg(config, GameKelly):
             idx_rmfq =0
             bid0 = (c - epsilon) * torch.rand(n) + epsilon
 
+            s_min = (n - 1) * epsilon + config["delta"]
+            s_max = (n - 1) * c + config["delta"]
+            z_max = BR_alpha_fair(epsilon, c_vector, bid0, s_min, a_vector, delta, alpha, price, b=0)
+            x_max = z_max / (z_max + s_min)
 
-            Payoff_min = torch.tensor(0.2)
+            # z_min = BR_alpha_fair(eps, c_vector, bid0, s_max, a_vector, delta, alpha, price, b=0)
+            x_min = epsilon / (epsilon + s_max)
+            x_min_2 = c_vector / (c_vector + s_max)
 
-            Payoff_max = torch.tensor(1)
-
+            Payoff_min = torch.min(Payoff(x_min, epsilon, a_vector, d_vector, alpha, price),
+                                   Payoff(x_min_2, c_vector, a_vector, d_vector, alpha, price))
+            Payoff_max = torch.max(Payoff(x_max, z_max, a_vector, d_vector, alpha, price))
 
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
@@ -110,7 +118,8 @@ def run_simulation_table_avg(config, GameKelly):
                     )
 
 
-                    min_error = Utility_set[4][-1]
+                    min_error = torch.min(Utility_set[4])
+
                     nb_iter = int(torch.argmin(Utility_set[4]).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
                     minError_list.append(min_error)
@@ -160,7 +169,7 @@ def display_results_streamlit_dict(results, config, save_path=None):
                 if isinstance(metric, float) and np.isinf(metric):
                     metric_str = results[gamma][n][method+ "error"]#f"<{config["T"]}"#"∞"
                 else:
-                    metric_str = str(metric)
+                    metric_str = metric
                 row.append(metric_str)
             table_rows.append(row)
 

@@ -820,7 +820,7 @@ class GameKelly:
             potential[t] =  log_potential(matrix_bids[t],a_vector,self.price)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             #agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
-            if stop and err <= self.tol:
+            if stop and eps_error[t] <= self.tol:
                 break
         col = torch.arange(1, k + 1)
         agg_bids = torch.cumsum(matrix_bids[:k, :], dim=0)/ col.unsqueeze(1).expand(-1,self.n)
