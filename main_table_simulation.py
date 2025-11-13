@@ -36,6 +36,7 @@ def run_simulation_table_avg(config, GameKelly):
     Nb_random_sim = config["Nb_random_sim"]
 
     results = {}  # dict to store results
+    results_epsNE = {}  # dict to store results
 
     # Réinitialiser les placeholders
     progress_bar = st.progress(0)
@@ -43,8 +44,10 @@ def run_simulation_table_avg(config, GameKelly):
 
     for sim_gamma, gamma in enumerate(list_gamma):
         results[gamma] = {}
+        results_epsNE[gamma] = {}
         for n in list_n:
             results[gamma][n] = {}
+            results_epsNE[gamma][n] = {}
 
             a_vector = torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
             c_vector = torch.tensor([max(c - i * mu, epsilon) for i in range(n)], dtype=torch.float64)
@@ -70,6 +73,9 @@ def run_simulation_table_avg(config, GameKelly):
             for idxMthd, lrMethod in enumerate(lrMethods):
                 iterations_list = []
                 minError_list = []
+
+                iterations_list_epsNE = []
+                minError_list_epsNE = []
                 copy_keys={}
 
 
@@ -118,19 +124,31 @@ def run_simulation_table_avg(config, GameKelly):
                     )
 
 
-                    min_error = torch.min(Utility_set[4])
+                    min_error = torch.min(error_NE_set)
 
-                    nb_iter = int(torch.argmin(Utility_set[4]).item()) if min_error <= tol else float('inf')
+                    nb_iter = int(torch.argmin(error_NE_set).item()) if min_error <= tol else float('inf')
                     iterations_list.append(nb_iter)
                     minError_list.append(min_error)
+
+
+                    min_error_epsNE = torch.min(Utility_set[4])
+
+                    nb_iter_epsNE = int(torch.argmin(Utility_set[4]).item()) if min_error_epsNE <= tol else float('inf')
+                    iterations_list_epsNE.append(nb_iter_epsNE)
+                    minError_list_epsNE.append(min_error_epsNE)
 
 
                 # Average over Nb_random_sim
                 avg_iterations = np.mean([i for i in iterations_list if i != float('inf')]) \
                     if any(i != float('inf') for i in iterations_list) else float('inf')
+                avg_iterations_epsNE = np.mean([i for i in iterations_list_epsNE if i != float('inf')]) \
+                    if any(i != float('inf') for i in iterations_list_epsNE) else float('inf')
 
                 results[gamma][n][lrMethod2] = avg_iterations
                 results[gamma][n][lrMethod2+"error"] = np.mean(minError_list)
+
+                results_epsNE[gamma][n][lrMethod2] = avg_iterations_epsNE
+                results_epsNE[gamma][n][lrMethod2+"error"] = np.mean(minError_list_epsNE)
         # Mise à jour progression
         progress = (sim_gamma + 1) /len(list_gamma)
         progress_bar.progress(progress)
@@ -138,7 +156,7 @@ def run_simulation_table_avg(config, GameKelly):
         # Mise à jour compteur i/N
         status_text.text(f"Simulation {sim_gamma + 1}/{list_gamma}")
 
-    return results
+    return results, results_epsNE
 
 
 import io

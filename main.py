@@ -226,9 +226,7 @@ class SimulationRunner:
                     mean_val = np.mean(np.stack(v_list), axis=0)
                     self.results["methods"][method][k] = mean_val
 
-                   # print(k,self.results["methods"][method][k])
-
-
+                   # print(k,self.results["methods"][method][k]
 
                 try:
 

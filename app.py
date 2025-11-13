@@ -126,7 +126,8 @@ with st.sidebar:
         cfg["c"] = st.number_input("c (base budget)", 1e-4, 1e6, float(cfg["c"]), step=10.0)
         cfg["delta"] = st.number_input("δ (slack)", 0.0, 10.0, float(cfg["delta"]), step=0.1)
         cfg["epsilon"] = st.number_input("ε (min bid)", 0.0, 100.0, float(cfg["epsilon"]), step=0.05)
-        cfg["tol"] = st.number_input("Tolerance", 1e-9, 1e-2, float(cfg["tol"]), step=1e-6)
+
+
 
         # Heterogeneity vectors
         cfg["a_vector"] = st.text_area(
@@ -147,6 +148,20 @@ with st.sidebar:
             "List of γ values",
             value=", ".join(str(x) for x in DEFAULT_CONFIG_TABLE["list_gamma"])
         ).split(",") if x.strip()]
+
+
+        s_min = (cfg["n"] - 1) * cfg["epsilon"] + cfg["delta"]
+        s_max = (cfg["n"] - 1) * cfg["c"] * torch.ones(1) + cfg["delta"]
+        z_max = BR_alpha_fair(cfg["epsilon"] * torch.ones(1), cfg["c"] * torch.ones(1), cfg["c"] * torch.ones(1), s_min, torch.tensor(cfg["a_vector"]), cfg["delta"], cfg["alpha"], cfg["price"], b=0)
+        x_max = z_max / (z_max + s_min)
+        x_min = cfg["epsilon"] * torch.ones(1) / (cfg["epsilon"] * torch.ones(1) + s_max)
+        x_min_2 = cfg["c"] * torch.ones(1) / (cfg["c"] * torch.ones(1) + s_max)
+
+        Payoff_min = torch.min(Payoff(x_min, cfg["epsilon"] * torch.ones(1), torch.tensor(cfg["a_vector"]) , cfg["d_vector"], cfg["alpha"], cfg["price"]),
+                               Payoff(x_min_2, cfg["c"] * torch.ones(1), torch.tensor(cfg["a_vector"]), cfg["d_vector"], cfg["alpha"], cfg["price"]))
+        Payoff_max = torch.max(Payoff(x_max, z_max, torch.tensor(cfg["a_vector"]), cfg["d_vector"], cfg["alpha"], cfg["price"]))
+       # print(Payoff_max , Payoff_min,float(cfg["tol"])/ float(Payoff_max - Payoff_min[0])) #/ float(Payoff_max - Payoff_min[0])
+        cfg["tol"] = st.number_input("Tolerance", 1e-12, 1e-2, float(cfg["tol"]), step=1e-6)
 
     # ------------------------
     # 🧠 Learning methods
@@ -270,6 +285,9 @@ with st.sidebar:
     cfg["num_hybrid_set"] =[0]
 
 
+    cfg["y_zoom_interval"] = [0.0,1.0]
+
+
     if "Hybrid" in selected_methods :
         st.info("You selected Hybrid. You can configure multiple hybrid algorithms below.")
         func_group  = []
@@ -285,7 +303,7 @@ with st.sidebar:
             label="🔍 Select X-axis zoom interval",
             min_value=1,
             max_value=num_hybrids,
-            value=(1, num_hybrids),  # default: full x range
+            value=(1, num_hybrids+1),  # default: full x range
             step=1
         )
         cfg["x_zoom_interval"] = x_zoom_interval
@@ -299,9 +317,11 @@ with st.sidebar:
             value=1,
             step=1
         )
-        cfg["lrMethods"] = cfg["lrMethods"] + ["Hybrid"]*(num_hybrid_set*num_hybrids - 1)
+        if num_hybrids>1:
+            cfg["lrMethods"] = cfg["lrMethods"] + ["Hybrid"]*(num_hybrid_set*num_hybrids - 1)
         cfg["Hybrid_funcs_"] = []
         cfg["num_hybrid_set"] = num_hybrid_set
+
         #print(f"num_hybrid_set{num_hybrid_set}")
         for i in range(num_hybrid_set):
             method = st.multiselect(
@@ -326,17 +346,19 @@ with st.sidebar:
 
         cfg["Hybrid_sets"] =[]
         cfg["Hybrid_funcs"] = []
+
         for secMeth in range(num_hybrid_set):
             cfg["Learning_rates"] = cfg["Learning_rates"] + [cfg["eta"]] * num_hybrids
+
             sets = []
             if num_hybrids == 1:
-                percent_A1 = st.slider(
+                percent_A1 = st.number_input(
                     "Select percentage of players in first subset (A₁)",
                     min_value=1,
                     max_value=99,
                     value=50,
                     step=1,
-                    format="%d%%",
+                #%format="%d%%",
                     help="Defines the percentage of players assigned to A₁ in the hybrid group."
                 )
                 # Convert percentage to number of players
@@ -623,7 +645,7 @@ try:
         # 📘 Step 3: Format layout
         # =====================================================
         y_label_map = {
-            "Speed": str(rf"$||BR(z(t) -z(t)||_2$"),
+            "Speed": str(rf"$||BR(z(t) -z(t)||_{{2}}$"),
             "LSW": "LSW",
             "SW": "Social Welfare ",
             "Bid": "Player Bid",
@@ -774,39 +796,59 @@ try:
                     func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 
                     func_group.append("Non-hybrid")
-                elif cfg["metric"] in ["Bid", "Avg_Bid"] :
-                    baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
-                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
-
-                    func_group.append("Non-hybrid")
-                elif cfg["metric"] in ["Relative_Efficienty_Loss"]:
-                    cfg["y_label"] = r"$\rho(z(T))$"
-                    baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
-                    func_group.append("Non-hybrid")
-                elif cfg["metric"] == "epsilon_error":
-                    cfg["y_label"] = r"$\epsilon(z(T))$"
-                    baseline = cfg["tol"] * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
-                    func_group.append("Non-hybrid")
-
-                save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
-                #xlab = rf"$A\alpha_{{{funcs_[0]}}}$"
-                xlab = cfg["x_label"]
-                x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
-                if cfg["metric"] in ["Speed"]:
-                    cfg["y_label"] =  "‖BR(z(T)) − z(T)‖"
-
-                if num_hybrid_set == 1 and num_hybrids == 1:
-                    x_data_2 = x_data
+                    if num_hybrids ==1:
+                        figpath_plot, figpath_legend, figpath_zoom = plotGame_dim_N(cfg, x_data, y_data_2, cfg["x_label"],
+                                                                                    cfg["y_label"], LEGENDS2,
+                                                                                    saveFileName=save_to,
+                                                                                    fontsize=40, markersize=45,
+                                                                                    linewidth=12, linestyle="--",
+                                                                                    Players2See=cfg["Players2See"],
+                                                                                    ylog_scale=cfg["ylog_scale"],
+                                                                                    pltText=cfg["pltText"],
+                                                                                    step=cfg["plot_step"])
+                    else:
+                        xlab = rf"$\alpha_{{{funcs_[0]}}}$"
+                        save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
+                        figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
+                                                                                           saveFileName=save_to2, funcs_=func_group,
+                                                                     fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                                     Players2See=cfg["Players2See"],
+                                                ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
                 else:
-                    xlab = rf"$\alpha_{{{funcs_[0]}}}$"
-                figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
-                                                                                   saveFileName=save_to2, funcs_=func_group,
-                                                             fontsize=40, markersize=45, linewidth=12,linestyle="--",
-                                                             Players2See=cfg["Players2See"],
-                                        ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+                    if cfg["metric"] in ["Bid", "Avg_Bid"] :
+                        baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                        y_data_2.append(np.array(baseline))
+                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+
+                        func_group.append("Non-hybrid")
+                    elif cfg["metric"] in ["Relative_Efficienty_Loss"]:
+                        cfg["y_label"] = r"$\rho(z(T))$"
+                        baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
+                        y_data_2.append(np.array(baseline))
+                        func_group.append("Non-hybrid")
+                    elif cfg["metric"] == "epsilon_error":
+                        cfg["y_label"] = r"$\epsilon(z(T))$"
+                        baseline = cfg["tol"] * np.ones_like(y_data_2[0])
+                        y_data_2.append(np.array(baseline))
+                        func_group.append("Non-hybrid")
+
+                    save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
+                    #xlab = rf"$A\alpha_{{{funcs_[0]}}}$"
+                    xlab = cfg["x_label"]
+                    x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
+                    if cfg["metric"] in ["Speed"]:
+                        cfg["y_label"] =  "‖BR(z(T)) − z(T)‖"
+
+                    if num_hybrid_set == 1 and num_hybrids == 1:
+                        x_data_2 = x_data
+                    else:
+                        xlab = rf"$\alpha_{{{funcs_[0]}}}$"
+                    figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
+                                                                                       saveFileName=save_to2, funcs_=func_group,
+                                                                 fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                                 Players2See=cfg["Players2See"],
+                                            ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+
 
 
         fig.update_layout(
@@ -879,10 +921,11 @@ except Exception:
 
 if st.button("📊 Run Simulation Table"):
     with st.spinner("Simulating..."):
-        results_table = run_simulation_table_avg(cfg, GameKelly)
+        results_table, results_table_eps = run_simulation_table_avg(cfg, GameKelly)
         st.success("Done.")
 
         st.session_state.results_table = results_table
+        st.session_state.results_table_eps = results_table_eps
         st.session_state.config = cfg
         #display_results_streamlit_dict(results_table, cfg, save_path="results/table_results.csv")
 
@@ -890,6 +933,12 @@ if "results_table" in st.session_state:
     try:
         results_table = st.session_state.results_table
         display_results_streamlit_dict(results_table, cfg, save_path="results/table_results.csv")
+    except Exception:
+        st.info("ℹ️ No results available yet. Please press **📊 Run Simulation Table** to start.")
+if "results_table_eps" in st.session_state:
+    try:
+        results_table_eps = st.session_state.results_table_eps
+        display_results_streamlit_dict(results_table_eps, cfg, save_path="results/table_results.csv")
     except Exception:
         st.info("ℹ️ No results available yet. Please press **📊 Run Simulation Table** to start.")
 

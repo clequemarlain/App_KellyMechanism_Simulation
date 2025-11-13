@@ -32,6 +32,7 @@ SIMULATION_CONFIG = {
 SIMULATION_CONFIG["Hybrid_sets"] = [list(range(0, 1)), list(range(1, int(SIMULATION_CONFIG["n"])))]
 SIMULATION_CONFIG["legends"] = SIMULATION_CONFIG["lrMethods"]
 
+
 SIMULATION_CONFIG_table = {
     # Simulation parameters
     "save_path": "results_table.csv",  # Path to save the result (.csv file)

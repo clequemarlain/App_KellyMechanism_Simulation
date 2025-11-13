@@ -477,16 +477,16 @@ class GameKelly:
         p = torch.sum(z) - z + self.delta
         if self.alpha  not in [0,1,2]:
             z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
-            err = torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
+            err = torch.norm(z_br - z)#,float('inf'))#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
         else:
             z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
                                             a_vector, self.delta, self.alpha, self.price,
                                             b=0)
-            err =  torch.norm(z_br - z)#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
+            err =  torch.norm(z_br - z)#,float('inf'))#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
 
         return err   # torch.norm(self.grad_phi(z))
 
-    def epsilon_error(self, z: torch.tensor, a_vector, c_vector, d_vector,):
+    def epsilon_error(self, z: torch.tensor, a_vector, c_vector, d_vector):
         p = torch.sum(z) - z + self.delta
         if self.alpha  not in [0,1,2]:
             z_br = solve_nonlinear_eq(a_vector, p, self.alpha, self.epsilon, c_vector, self.price, max_iter=1000, tol=self.tol)
@@ -801,6 +801,7 @@ class GameKelly:
 
         k = 0
 
+
         for t in range(1, n_iter + 1):
 
             k = t
@@ -808,6 +809,8 @@ class GameKelly:
             matrix_bids[t], acc_grad = func(t, a_vector, c_vector, d_vector, eta, matrix_bids[t-1], acc_grad, p=p, vary=vary, Hybrid_funcs=Hybrid_funcs, Hybrid_sets=Hybrid_sets)
             jain_idx[t] = self.Jain_index(matrix_bids[t])
             error_NE[t] = self.check_NE(matrix_bids[t], a_vector, c_vector, d_vector)
+
+
             eps_error[t] = self.epsilon_error(matrix_bids[t], a_vector, c_vector, d_vector)
             vec_LSW[t] = LSW_func(self.fraction_resource(matrix_bids[t]), c_vector, a_vector, d_vector, self.alpha)
 
@@ -820,7 +823,8 @@ class GameKelly:
             potential[t] =  log_potential(matrix_bids[t],a_vector,self.price)
             err = torch.min(error_NE[:k])#round(float(torch.min(error_NE[:k])),3)
             #agg_bids[t] = 1/(t+1) * torch.sum(matrix_bids[:t], dim=0)#self.AverageBid(matrix_bids, t)
-            if stop and eps_error[t] <= self.tol:
+
+            if stop and error_NE[t] <= self.tol:
                 break
         col = torch.arange(1, k + 1)
         agg_bids = torch.cumsum(matrix_bids[:k, :], dim=0)/ col.unsqueeze(1).expand(-1,self.n)
@@ -915,7 +919,11 @@ def plotGame(config,
     if config.get("metric", "") == "Relative_Efficienty_Loss":
         # Affiche les ticks en pourcentage (0–100%)
         ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
-
+    #if config["metric"] == "Relative_Efficienty_Loss" or config["metric"] == "epsilon_error":
+        #if config["metric"] == "Relative_Efficienty_Loss":
+        #    plt.ylim(0, 25)
+    #    if config["metric"] == "epsilon_error":
+    #        plt.ylim(0, 0.7)
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
     if config["pltLegend"]:
@@ -960,6 +968,7 @@ def plotGame(config,
     fig_zoom = plt.figure(figsize=(18, 12))
     ax_zoom = fig_zoom.add_subplot(111)
     x_min, x_max = config["x_zoom_interval"]
+    y_min, y_max = config["y_zoom_interval"]
 
     for i in range(len(legends)):
         color = "red" if legends[i] == "NE" else colors[i]
@@ -972,6 +981,10 @@ def plotGame(config,
 
         x_vals = x_data[x_min:x_max]  # 5 derniers x
         y_vals = (y_data[i])[x_min:x_max] # 5 derniers y
+        #if config["metric"]=="Relative_Efficienty_Loss" or config["metric"]=="epsilon_error":
+        #"    mask = (y_vals >= y_min) & (y_vals <= y_max)
+        #    x_vals = x_vals[mask]
+        #    y_vals = y_vals[mask]
 
         ax_zoom.plot(
         x_vals[::step],
@@ -1008,7 +1021,7 @@ def plotGame(config,
         label.set_fontweight("bold")
     if config.get("metric", "") == "Relative_Efficienty_Loss":
         # Affiche les ticks en pourcentage (0–100%)
-        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=4))
+        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=3))
     ax_zoom.tick_params(axis="both", labelsize=2*markersize)
     ax_zoom.set_ylabel("", fontweight="bold")
     ax_zoom.yaxis.label.set_size(1.5*markersize)
@@ -1074,6 +1087,7 @@ def plotGame_dim_N(
         if is_NE:
             continue
 
+
         color = COLORS_METHODS.get(name, colors[i % len(colors)])
         marker_series = MARKERS_METHODS.get(name, None)
 
@@ -1118,6 +1132,7 @@ def plotGame_dim_N(
                     bbox=dict(facecolor="white", alpha=0.7),
                     va="bottom", ha="right"
                 )
+
 
     # NE (trait horizontal unique)
     if "NE" in legends:
@@ -1186,33 +1201,40 @@ def plotGame_dim_N(
     k = min(5, Tm)
     x_last = x_data_i[-k:]
 
+    x_min, x_max = config["x_zoom_interval"]
+    x_last = x_data_i[x_min: x_max]
+
     for i, name in enumerate(legends):
         if name == "NE":
             continue
         color = COLORS_METHODS.get(name, colors[i % len(colors)])
         marker_series = MARKERS_METHODS.get(name, None)
-        Yi = np.array(y_data[i], dtype=float)[:Tm]
+        Yi = np.array(y_data[i], dtype=float)#[:Tm]
         for j in Players2See:
             marker = marker_series if marker_series else markers[j % len(markers)]
-            y_last = Yi[-k:, j]
+            #y_last = Yi[-k:, j]
+
+            y_last = Yi[x_min: x_max,j]
+
             ax_zoom.plot(
-                x_last, y_last,
+                x_last[::step], y_last[::step],
                 linestyle=linestyle, linewidth=linewidth,
                 marker=marker, markersize=2*markersize,
                 color=color, markeredgecolor="black",
             )
-            ax_zoom.text(
-                x_last[-1], y_last[-1], f"{y_last[-1]:.3e}",
-                fontweight="bold", fontsize=80,
-                bbox=dict(facecolor="white", alpha=0.7),
-                va="bottom", ha="right"
-            )
-
+            if pltText:
+                ax_zoom.text(
+                    x_last[-1], y_last[-1], f"{y_last[-1]:.3e}",
+                    fontweight="bold", fontsize=80,
+                    bbox=dict(facecolor="white", alpha=0.7),
+                    va="bottom", ha="right"
+                )
     # axes épurés pour le zoom
     ax_zoom.axhline(y=ne_val, color="red", linestyle=linestyle, linewidth=linewidth, label="NE")
     ax_zoom.set_xlim(x_last[0], x_last[-1])
 
     ax_zoom.set_xticks([])  # Supprime les graduations
+    #ax_zoom.yaxis.label.set_size(3 * markersize)
     ax_zoom.set_yticks([])  # Supprime les graduations
     ax_zoom.set_xlabel("")  # Supprime le label
 
