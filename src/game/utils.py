@@ -602,7 +602,7 @@ class GameKelly:
             # Step-size (theorem 3.1 Hazan)
         #    eta_t = 100/t**eta if t > 0 else eta
         #else:
-        eta_t =  D / (G * np.sqrt(t))  # fallback pour t=0
+        eta_t =  D / (G * np.sqrt(self.T))  # fallback pour t=0
 
         # Update rule
         z_candidate = bids + eta_t * grad_t
@@ -1082,6 +1082,7 @@ def plotGame_dim_N(
 
     # Plot des méthodes (sauf NE)
 
+
     for i, name in enumerate(legends):
         is_NE = (name == "NE")
         if is_NE:
@@ -1492,81 +1493,144 @@ def plotGame_Hybrid_last(config,
     plt.close(fig_zoom)
 
     return figpath_plot,figpath_zoom, figpath_legend
-
+import matplotlib
 def plotGame_dim_N_last(config,
         x_data, y_data, x_label, y_label, legends, saveFileName, funcs_=["SBRD","DAE"],
         ylog_scale=False, Players2See=[1, 2], fontsize=40,
         markersize=40, linewidth=12, linestyle="-",
         pltText=False, step=1, tol=1e-3
 ):
+
+
     plt.figure(figsize=(18, 12))
     #y_data = np.array(y_data, dtype=object)  # s'assurer que les sous-tableaux passent bien
     y_data_Hybrid = y_data[0]
+    if config["metric"] in ["Payoff","Bid"]:
+        col = torch.arange(1, config["T"] + 1)
+
+        agg_utility = y_data[-1][0]
+    else:
+        agg_utility = y_data_Hybrid
 
     plt.rcParams.update({'font.size': fontsize})
     funcs_ = [legend_map.get(l, l) for l in funcs_]
     #print(y_data_Hybrid)
+    #print(222)
     if ylog_scale:
         plt.yscale("log")
 
     legend_handles = []
+    legend_labels = []
     curves = []
-    funcNo_NE = [i for i in funcs_ if i!="Non-hybrid"]
+    curves_agg = []
+    funcNo_NE = [i for i in funcs_ if i!="Non-hybrid" and i != "NE"]
+
 
     if config["num_hybrids"] != 1 and config["num_hybrid_set"]>1:
         for j, fc in enumerate(funcNo_NE):
             curve = []
+            curve_agg =[]
 
             for i in range(len(y_data_Hybrid)):
                 #print(f"y_data_Hybrid{y_data_Hybrid[i]}")
                 curve.append((y_data_Hybrid[i][j]))
+                curve_agg.append((agg_utility[i][j]))
             curves.append(curve)
+            curves_agg.append(curve_agg)
     elif config["metric"] not in ["Relative_Efficienty_Loss", "Potential", "Speed"]:
         try:
             curves = list(map(list, zip(*y_data_Hybrid)))
-            curve_NE = [y_data[-1][-1][0]]
+            curves_agg = list(map(list, zip(*agg_utility)))
+            curve_NE = [y_data[1][-1][0]]
         except:
             o=2
     else:
         curves = [y_data_Hybrid]
-        print(y_data_Hybrid)
-        curve_NE = [y_data[-1][-1]]
+        curves_agg = [agg_utility]
+        curve_NE = [y_data[1][-1]]
+    legend_cache = set()
 
     for j, fc in enumerate(funcNo_NE):
 
-        color = "red" if fc == "Non-hybrid" else colors[j]
-        marker = "" if fc == "Non-hybrid" else markers[j % len(markers)]
+        color = "red" if fc == "Non-hybrid" or fc == "NE" else colors[j]
+        marker = "" if "Non-hybrid" or fc == "NE" else markers[j % len(markers)]
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
 
-        legend_handles.append(
-            Line2D([0], [0], color=color,
-                   marker=marker,
-                   markersize=markersize,
-                   markeredgecolor="black",
-                   linestyle=linestyle,
-                   linewidth=linewidth)
-        )
+        if fc not in legend_cache and fc!= "Non-hybrid" and fc != "NE":
+            legend_cache.add(fc)
+
+            big_marker = Line2D(
+                [0], [0],
+                color=color,  # line color
+                marker=marker,  # same shape as methods
+                markersize=markersize *1.25,  # big marker (avg.)
+                markerfacecolor=color,
+                markeredgecolor="black",
+                linestyle="--",
+                linewidth=2.0,
+            )
+
+            small_marker = Line2D(
+                [0], [0],
+                color="black",  # marker inside = black
+                marker=marker,  # same shape
+                markersize=markersize * 0.6,  # small marker (inst.)
+                markerfacecolor=colors[j],
+                markeredgecolor="black",
+                linestyle="",  # no line for the small one
+            )
+
+            legend_handles.append((big_marker, small_marker))
+            legend_labels.append(rf"{fc} (avg./inst.)")
 
         curve = curves[j]
-        x_data_i = x_data[:config["T_plot"]]
+        curve_agg = curves_agg[j]
+        x_data_i = x_data[:config[("T_plot")]]
         curve = curve[:config["T_plot"]]
+        curve2=curve.copy()
+        curve_agg = curve_agg[:config["T_plot"]]
+
         label = ""
         if config["pltLegend"]:
             label = f"{fc}"
 
+        if config["metric"] in ["Payoff","Bid"]:
+            curve2=curve_agg
+
+        if fc not in legend_cache:
+            label_inst = rf"{fc} (inst./avg.)"
+            legend_cache.add(fc)
+        else:
+            label_inst = None
         plt.plot(
             x_data_i[::step],
-            curve[::step],
+            curve2[::step],
             linestyle=linestyle,
             linewidth=linewidth,
             marker=marker,
             markersize=1.25 * markersize,
             color=color,
-            label=label,
+            #label=label,
             markeredgecolor="black",
         )
+        if config["metric"] in ["Payoff","Bid"]:
+            label = rf'{fc}--$\overline{{\varphi_i}}(z(T))$'
+            if config["metric"] in ["Bid"]:
+                label = rf'{fc}--$z_i(T)$'
+            plt.plot(
+                x_data_i[::step],
+                curve[::step],
+                alpha=1, lw=5.2,
+                #label=label,
+                marker=marker,
+                linestyle="--",
+                markersize=0.4 * markersize,
+                color=colors[j],
+                markerfacecolor=colors[j],  # FILL of marker = BLACK
+                markeredgecolor="black",  # BORDER = BLACK
+            )
 
         if pltText:
             lastValue = f"{curve[-1]:.2e}"
@@ -1580,16 +1644,25 @@ def plotGame_dim_N_last(config,
                 horizontalalignment="right")
 
     # légendes et labels
-    if funcs_[-1]== "Non-hybrid":
+    if funcs_[-1]== "Non-hybrid" or  funcs_[-1] == "NE":
 
         plt.axhline(
             y=curve_NE,
             color="red",
-            linestyle=linestyle,
+            linestyle=":",
             linewidth=linewidth,
-            label=f"Non-hybrid"
+            label=f"{funcs_[-1]}"
+    )
+        legend_cache.add(f"{funcs_[-1]}")
+        legend_handles.append(
+            Line2D(
+                [0], [0],
+                color="red",
+                linestyle=":",
+                linewidth=linewidth,
+            )
         )
-
+        legend_labels.append(f"{funcs_[-1]}")
         if pltText:
             lastValue = f"{curve_NE[-1]:.2e}"
             if config.get("metric", "") == "Relative_Efficienty_Loss":
@@ -1602,7 +1675,6 @@ def plotGame_dim_N_last(config,
                      horizontalalignment="right")
 
     ax = plt.gca()
-
     # --- Axis formatting ---
     for label in ax.get_xticklabels() + ax.get_yticklabels():
         label.set_fontweight("bold")
@@ -1619,10 +1691,10 @@ def plotGame_dim_N_last(config,
     plt.grid(True)
 
     # 🔑 Horizontal legend
-    plt.legend(
-       # loc="lower left",
-        #bbox_to_anchor=(0.5, -0.15),  # ✅ sous la figure
-        #ncol=len(funcs_),  # ✅ labels sur une seule ligne
+    plt.legend(legend_handles, legend_labels,
+       handler_map={
+           tuple: matplotlib.legend_handler.HandlerTuple(ndivide=None)
+       },
         frameon=False,
         prop={'weight': 'bold'}
     )
@@ -1663,8 +1735,8 @@ def plotGame_dim_N_last(config,
     ax_zoom = fig_zoom.add_subplot(111)
 
     for i, fc in enumerate(funcNo_NE):
-        color = "red" if fc == "Non-hybrid" else colors[j]
-        marker = "" if fc == "Non-hybrid" else markers[j % len(markers)]
+        color = "red" if fc == "Non-hybrid" or fc == "NE" else colors[j]
+        marker = "" if fc == "Non-hybrid" or fc == "NE" else markers[j % len(markers)]
         if fc in METHODS:
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
@@ -1700,7 +1772,7 @@ def plotGame_dim_N_last(config,
     # même axes que principal (pas de zoom)
     #ax_zoom.set_xlim(x_data[-2], x_data[-1])
     #ax_zoom.set_ylim(plt.ylim())  # reprendre les bornes du plot principal
-    if funcs_[-1]== "Non-hybrid":
+    if funcs_[-1]=="Non-hybrid" or funcs_[-1] == "NE":
 
         ax_zoom.axhline(
             y=curve_NE,

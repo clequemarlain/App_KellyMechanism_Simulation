@@ -38,7 +38,7 @@ class SimulationRunner:
         eps = epsilon * torch.ones(1)
         z_sol_equ = solve_quadratic(self.config["n"],  self.config["a"],  self.config["delta"])
         var_init = self.config["var_init"]
-        bid0 = torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
+        bid0 = eps*torch.rand(1)#torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
 
         c_min = epsilon
 
@@ -222,9 +222,13 @@ class SimulationRunner:
                     self.results["methods"][method][k] = np.mean(v_list)
 
                 else:
+                    #print(v_list)
 
                     mean_val = np.mean(np.stack(v_list), axis=0)
+                    #print(method,k,mean_val)
                     self.results["methods"][method][k] = mean_val
+
+
 
                    # print(k,self.results["methods"][method][k]
 
@@ -248,6 +252,7 @@ class SimulationRunner:
                             self.results["methods"][key_name][k] = np.mean(v_list)
                         else:
                             self.results["methods"][key_name][k].append(mean_val[-1])
+                            #print("last", mean_val[-1])
 
                     #else:
                     #    print(f" np.mean(v_list){ np.mean(v_list)}")

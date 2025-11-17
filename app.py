@@ -571,6 +571,7 @@ try:
         # =====================================================
         x_data = np.arange(config["T"])
         y_data, legends = [], []
+        y_data_avg = []
 
 
         for method in LEGENDS:
@@ -581,8 +582,11 @@ try:
 
             else:
 
-
                 y_data.append(results['methods'][method][cfg["metric"]])
+                if cfg["metric"] in ["Payoff"]:
+                    y_data_avg.append(results['methods'][method]["Avg_Payoff"])
+                elif cfg["metric"] in ["Bid"]:
+                    y_data_avg.append(results['methods'][method]["Avg_Bid"])
             legends.append(method)
            # print(y_data)
         # --- Add optimal baseline if needed ---
@@ -648,7 +652,7 @@ try:
             "Speed": str(rf"$||BR(z(t) -z(t)||_{{2}}$"),
             "LSW": "LSW",
             "SW": "Social Welfare ",
-            "Bid": "Player Bid",
+            "Bid": "Player's Bid",
             "Avg_Bid": "Average Bid",
             "epsilon_error": rf"$\epsilon(z(t))$",
             "Jain_Index": "Jain Index",
@@ -790,13 +794,28 @@ try:
                 y_data_2 = y_data_2
 
                 # baseline: une ligne plate de payoff_opt avec la bonne longueur
-                if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
-                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff", "Bid", "Avg_Bid"]:
+                    if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
+                        baseline = payoff_ne * np.ones_like(y_data_2[0])
+                        y_data_2.append(np.array(baseline))
+                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                        y_data_2.append([el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
+                         for el in y_data_avg])
 
-                    func_group.append("Non-hybrid")
+
+
+                        func_group.append("NE")
+
+                    if cfg["metric"] in ["Bid", "Avg_Bid"] :
+                        baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
+                        y_data_2.append(np.array(baseline))
+                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                        y_data_2.append([el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
+                                         for el in y_data_avg])
+                        func_group.append("NE")
                     if num_hybrids ==1:
+                        LEGENDS3 = LEGENDS2
+                        LEGENDS3.append(cfg["Hybrid_funcs"][0][0])
                         figpath_plot, figpath_legend, figpath_zoom = plotGame_dim_N(cfg, x_data, y_data_2, cfg["x_label"],
                                                                                     cfg["y_label"], LEGENDS2,
                                                                                     saveFileName=save_to,
@@ -809,19 +828,14 @@ try:
                     else:
                         xlab = rf"$\alpha_{{{funcs_[0]}}}$"
                         save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
+
                         figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
                                                                                            saveFileName=save_to2, funcs_=func_group,
                                                                      fontsize=40, markersize=45, linewidth=12,linestyle="--",
                                                                      Players2See=cfg["Players2See"],
                                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
                 else:
-                    if cfg["metric"] in ["Bid", "Avg_Bid"] :
-                        baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
-                        y_data_2.append(np.array(baseline))
-                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
-
-                        func_group.append("Non-hybrid")
-                    elif cfg["metric"] in ["Relative_Efficienty_Loss"]:
+                    if cfg["metric"] in ["Relative_Efficienty_Loss"]:
                         cfg["y_label"] = r"$\rho(z(T))$"
                         baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
                         y_data_2.append(np.array(baseline))
