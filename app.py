@@ -1,3 +1,7 @@
+#app.py
+
+
+
 import json, io
 import numpy as np
 import torch,ast, random,time
@@ -87,6 +91,48 @@ with st.sidebar:
     cfg["alpha"] = st.selectbox("α (fairness)", [0, 1, 2], index=[0, 1, 2].index(cfg["alpha"]))
     cfg["eta"] = st.number_input(rf"RRM Learning rate ($\beta$)", 1e-7, 100.0, float(cfg["eta"]), step=0.1, format="%.7f")
     cfg["lr_vary"] = st.checkbox("Vary learning rate over time?", value=cfg["lr_vary"])
+    cfg["Add_Zoom"] = st.checkbox("Add a Zoom, please select X_axis Zoom", value=False)
+    if cfg["Add_Zoom"]:
+        # Ensure config exists
+        if "config" not in st.session_state:
+            st.session_state.cfg = {
+                "inset_rect": [0.55, 0.55, 0.40, 0.40],
+            }
+
+
+
+        st.write("### Zoom inset rectangle (in axes coordinates 0–1)")
+        left = st.number_input(
+            "Left",
+            min_value=0.0, max_value=1.0,
+            value=0.68, step=0.01,
+            help="Horizontal position of the zoom box (0 = far left, 1 = far right)."
+        )
+
+        bottom = st.number_input(
+            "Bottom",
+            min_value=0.0, max_value=1.0,
+            value=0.68, step=0.01,
+            help="Vertical position of the zoom box (0 = bottom, 1 = top)."
+        )
+
+        width = st.number_input(
+            "Width",
+            min_value=0.0, max_value=1.0,
+            value=0.30, step=0.01,
+            help="Width of the zoom box relative to the full plot (0 to 1 scale)."
+        )
+
+        height = st.number_input(
+            "Height",
+            min_value=0.0, max_value=1.0,
+            value=0.30, step=0.01,
+            help="Height of the zoom box relative to the full plot (0 to 1 scale)."
+        )
+
+        cfg["inset_rect"] = [left, bottom, width, height]
+
+
     cfg["keep_initial_bid"] = st.checkbox("Keep same initial bid for all simulations?", value=False)
 
     # ------------------------
@@ -101,13 +147,13 @@ with st.sidebar:
     # 🎯 Metric to visualize
     # ------------------------
     metrics_all = [
-        "Relative_Efficienty_Loss","Avg_Payoff","Payoff", "epsilon_error",   "Speed",  "Bid", "Potential", "Pareto",
+        "Relative_Efficienty_Loss","Avg_Payoff","Payoff", "epsilon_error",   "Speed", "epsilon_error_Hybrid",  "Bid", "Potential", "Pareto",
         "SW","Jain_Index", "LSW", "Dist_To_Optimum_SW", "Avg_Bid",  "Res_Payoff"
     ]
     cfg["metric"] = st.selectbox("Metric to plot", metrics_all, index=metrics_all.index(cfg["metric"]))
 
     cfg["Track"] = st.checkbox("Track the metric over time?", value=True)
-    cfg["pltLegend"] = st.checkbox("Plot legend ", value=True)
+    cfg["pltLegend"] = st.checkbox("Plot legend ", value=False)
     cfg["Random_set"] = st.checkbox("Random players' sets?", value=True)
 
     # ------------------------
@@ -182,6 +228,7 @@ with st.sidebar:
     DEFAULT_CONFIG["Learning_rates"] = [cfg["eta"]] * len(selected_methods)
     LEGENDS = []
     LEGENDS_Hybrid = []
+    LEGENDS_Hybrid_full = []
 
     # --- Default LR ---
     cfg["num_lrmethod"] = 0
@@ -281,8 +328,8 @@ with st.sidebar:
         cfg["lrMethods"] = selected_methods
 
 
-    cfg["num_hybrids"] = [0]
-    cfg["num_hybrid_set"] =[0]
+    cfg["num_hybrids"] = 0
+    cfg["num_hybrid_set"] = 0
 
 
     cfg["y_zoom_interval"] = [0.0,1.0]
@@ -299,6 +346,18 @@ with st.sidebar:
             value=1,
             step=1
         )
+        if num_hybrids == 1:
+            percent_A1 = st.number_input(
+                "Select percentage of players in first subset (A₁)",
+                min_value=1,
+                max_value=99,
+                value=50,
+                step=1,
+                # %format="%d%%",
+                help="Defines the percentage of players assigned to A₁ in the hybrid group."
+            )
+            # Convert percentage to number of players
+            cfg["Nb_A1"] = [max(1, int(cfg["n"] * percent_A1 / 100))]
         x_zoom_interval = st.slider(
             label="🔍 Select X-axis zoom interval",
             min_value=1,
@@ -307,6 +366,10 @@ with st.sidebar:
             step=1
         )
         cfg["x_zoom_interval"] = x_zoom_interval
+
+
+
+
 
         cfg["num_hybrids"] = num_hybrids
         hybrid_options = [m for m in lr_methods_all if m != "Hybrid"]
@@ -321,6 +384,16 @@ with st.sidebar:
             cfg["lrMethods"] = cfg["lrMethods"] + ["Hybrid"]*(num_hybrid_set*num_hybrids - 1)
         cfg["Hybrid_funcs_"] = []
         cfg["num_hybrid_set"] = num_hybrid_set
+
+        if cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] >=1:
+            x_zoom_interval = st.slider(
+                label="🔍 Select X-axis zoom interval",
+                min_value=0,
+                max_value=cfg["T"],
+                value=(0, cfg["T"]),  # default: full x range
+                step=1
+            )
+            cfg["x_zoom_interval"] = x_zoom_interval
 
         #print(f"num_hybrid_set{num_hybrid_set}")
         for i in range(num_hybrid_set):
@@ -346,25 +419,13 @@ with st.sidebar:
 
         cfg["Hybrid_sets"] =[]
         cfg["Hybrid_funcs"] = []
+        print(22222,num_hybrid_set)
 
         for secMeth in range(num_hybrid_set):
             cfg["Learning_rates"] = cfg["Learning_rates"] + [cfg["eta"]] * num_hybrids
 
             sets = []
-            if num_hybrids == 1:
-                percent_A1 = st.number_input(
-                    "Select percentage of players in first subset (A₁)",
-                    min_value=1,
-                    max_value=99,
-                    value=50,
-                    step=1,
-                #%format="%d%%",
-                    help="Defines the percentage of players assigned to A₁ in the hybrid group."
-                )
-                # Convert percentage to number of players
-                cfg["Nb_A1"] = [max(1, int(cfg["n"] * percent_A1 / 100))]
-
-            else:
+            if num_hybrids > 1:
                 cfg["Nb_A1"] += list(range(1, num_hybrids + 1))
             LEGENDS_Hybrid.append(cfg["Hybrid_funcs_"][secMeth][1])#+rf" -- $\eta={cfg["eta"]}$")
             #LEGENDS_Hybrid.append(cfg["Hybrid_funcs_"][secMeth][1] + rf" -- $\eta={cfg["eta"]}$")
@@ -380,8 +441,9 @@ with st.sidebar:
                 # --- Construire la première liste : [0, ... autres sauf 1] ---
                 # candidats possibles : tous sauf 0 et 1, car 0 sera ajouté manuellement et 1 exclu
                 [subset, remaining] = make_subset(cfg["n"], h)
+
                 kk += 1
-                #LEGENDS_Hybrid.append(f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][idx]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][idx]})")
+                LEGENDS_Hybrid_full.append(f"({cfg["Hybrid_funcs_"][secMeth][0]}: {h}, {cfg["Hybrid_funcs_"][secMeth][1]}: {cfg["n"] - h})")
                 cfg["Hybrid_sets"].append([subset, remaining])
     else:
         x_zoom_interval = st.slider(
@@ -575,20 +637,31 @@ try:
 
 
         for method in LEGENDS:
-            if cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] ==1:
-
-                y_data.append(results['methods']["Hybrid"][cfg["metric"]])
-
-
-            else:
-
+            if method!= "Hybrid" and cfg["num_hybrid_set"] <1:
                 y_data.append(results['methods'][method][cfg["metric"]])
                 if cfg["metric"] in ["Payoff"]:
                     y_data_avg.append(results['methods'][method]["Avg_Payoff"])
                 elif cfg["metric"] in ["Bid"]:
                     y_data_avg.append(results['methods'][method]["Avg_Bid"])
+            elif cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] >=1:
+                y_data.append(results['methods']["Hybrid"][cfg["metric"]])
+                #print(y_data)
+                if cfg["metric"] in ["Payoff"]:
+                    y_data_avg.append(results['methods']["Hybrid"]["Avg_Payoff"])
+                elif cfg["metric"] in ["Bid"]:
+                    y_data_avg.append(results['methods']["Hybrid"]["Avg_Bid"])
             legends.append(method)
-           # print(y_data)
+        if cfg["num_hybrids"] >1  and cfg["num_hybrid_set"] >=1:
+            y_data_alpha = []
+            for hybrid_meth in LEGENDS_Hybrid_full:
+                y_data.append(results['methods'][hybrid_meth][cfg["metric"]])
+                #print(hybrid_meth, results['methods'][hybrid_meth][cfg["metric"]])
+                if cfg["metric"] in ["Payoff"]:
+                    y_data_avg.append(results['methods'][hybrid_meth]["Avg_Payoff"])
+                elif cfg["metric"] in ["Bid"]:
+                    y_data_avg.append(results['methods'][hybrid_meth]["Avg_Bid"])
+                legends.append(hybrid_meth)
+       # print(len(y_data))
         # --- Add optimal baseline if needed ---
         if cfg["metric"] in ["LSW", "SW"]:
             if cfg["metric"] == "SW":
@@ -608,53 +681,70 @@ try:
 
         h_idx = 1
         if cfg["Track"] :
+
             for i, (data, legend) in enumerate(zip(y_data, LEGENDS)):
 
-                if cfg["metric"] in ["Bid", "Avg_Bid", "Payoff", "Avg_Payoff", "Res_Payoff"]:
+                if cfg["metric"] in ["Bid", "Avg_Bid", "Payoff", "Avg_Payoff", "Res_Payoff"] and cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] ==1:
                     # Pour les graphiques multidimensionnels
-                    for j in range(np.array(data).shape[1]):
-                        try:
-                            ydata = data[0]
-                            xdata = x_data[::cfg["plot_step"]]
-                        except:
-                            ydata = data[:,0][::cfg["plot_step"]]
-                            xdata = np.array(np.arange(1, np.array(data).shape[0]+1)[:num_hybrids])/ cfg["n"]*100
+                    try:
+                        for j in range(np.array(data).shape[1]):
+                            try:
+                                ydata = data[0]
+                                xdata = x_data[::cfg["plot_step"]]
+                            except:
+                                ydata = data[:,0][::cfg["plot_step"]]
+                                xdata = np.array(np.arange(1, np.array(data).shape[0]+1)[:num_hybrids])/ cfg["n"]*100
 
-                        fig.add_trace(go.Scatter(
-                            x=xdata,
-                            y=ydata,
-                            mode="lines+markers",  # ✅ ligne + marqueur
-                            name=f"{legend} -- Player {j + 1}",
-                            line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),  # couleur de ligne
-                            marker=dict(
-                                symbol=markers2[j % len(markers2)],  # type de marqueur
-                                size=10,  # ✅ taille fixe (indépendante de plot_step)
-                                line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
-                            ),
-                            opacity=0.8
-                        ))
+                            fig.add_trace(go.Scatter(
+                                x=xdata,
+                                y=ydata,
+                                mode="lines+markers",  # ✅ ligne + marqueur
+                                name=f"{legend} -- Player {j + 1}",
+                                line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),  # couleur de ligne
+                                marker=dict(
+                                    symbol=markers2[j % len(markers2)],  # type de marqueur
+                                    size=10,  # ✅ taille fixe (indépendante de plot_step)
+                                    line=dict(width=1, color="black")  # contour noir (optionnel pour visibilité)
+                                ),
+                                opacity=0.8
+                            ))
+                    except:
+                        continue
 
 
                 else:
-                    fig.add_trace(go.Scatter(
-                        x=x_data[::cfg["plot_step"]],
-                        y=data[::cfg["plot_step"]],
-                        mode='lines+markers',
-                        name=legend,
-                        line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
-                    ))
+                    #print(data)
+                    try:
+                        fig.add_trace(go.Scatter(
+                            x=x_data[::cfg["plot_step"]],
+                            y=data[::cfg["plot_step"]],
+                            mode='lines+markers',
+                            name=legend,
+                            line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
+                        ))
+
+                    except:
+                        fig.add_trace(go.Scatter(
+                            x=x_data[::cfg["plot_step"]],
+                            y=y_data[::cfg["plot_step"]],
+                            mode='lines+markers',
+                            name=legend,
+                            line=dict(color=("red" if legend == "Optimal" else COLORS_METHODS[legends[i]] if legends[i] in METHODS else colors[i]), width=3),
+                        ))
+               # print(legend, i, LEGENDS, data)
 
 
         # =====================================================
         # 📘 Step 3: Format layout
         # =====================================================
         y_label_map = {
-            "Speed": str(rf"$||BR(z(t) -z(t)||_{{2}}$"),
+            "Speed": str(rf"$||BR(z(t)) -z(t)||_{{2}}$"),
             "LSW": "LSW",
             "SW": "Social Welfare ",
             "Bid": "Player's Bid",
             "Avg_Bid": "Average Bid",
             "epsilon_error": rf"$\epsilon(z(t))$",
+            "epsilon_error_Hybrid": rf"$\epsilon^H(z(t))$",
             "Jain_Index": "Jain Index",
             "Payoff": "Player's Payoff",
             "Avg_Payoff": "Average Payoff",
@@ -690,180 +780,201 @@ try:
         RLoss = torch.abs((SW_ne - SW_opt) / SW_opt)*100
 
         #y_data = {"speed": y_data_speed, "sw": y_data_sw, "lsw": y_data_lsw}
-        if cfg["metric"] in ["Bid", "Avg_Bid", "Payoff", "Avg_Payoff", "Res_Payoff","Pareto"]:
+        if cfg["metric"] in ["Bid", "Avg_Bid", "Payoff", "Avg_Payoff", "Res_Payoff","Pareto"]  or (cfg["num_hybrids"] >=1  or cfg["num_hybrid_set"] >=1):
             save_to =  cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-            try:
-
+            if cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] ==1:
                 y_data_2 = y_data
                 LEGENDS2 = LEGENDS
-
-                # baseline: une ligne plate de payoff_opt avec la bonne longueur
-
+                #print(func_group, len(y_data_2))
                 if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne * np.ones_like(y_data_2[0])
-                    y_data_2.append(baseline)
+                    baseline = payoff_ne  # * np.ones_like(y_data_2[0])
+                    # y_data_2.append(np.array(baseline))
+                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 
+                    func_group.append("NE")
 
-                    LEGENDS2.append("NE")
+                if cfg["metric"] in ["Bid", "Avg_Bid"]:
+                    baseline = z_ne.detach().numpy()  # * np.ones_like(y_data_2[0])
+                    # y_data_2.append(np.array(baseline))
+                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                    func_group.append("NE")
+                if cfg["metric"] in ["epsilon_error_Hybrid"]:
+                    baseline =cfg["tol"] *np.ones(2)
+                    # y_data_2.append(np.array(baseline))
+                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                    func_group.append("NE")
 
-                elif cfg["metric"] in ["Bid", "Avg_Bid"] :
-                    baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
-                    LEGENDS2.append("NE")
-
-                figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(cfg,x_data, y_data_2, cfg["x_label"], cfg["y_label"], LEGENDS2, saveFileName=save_to,
-                                                                 fontsize=40, markersize=45, linewidth=12,linestyle="--",
-                                                                 Players2See=cfg["Players2See"],
-                                             ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
-            except Exception as e:
-                    print("plotGame_dim_N")
-               # st.warning(f"⚠️ Error generating static plot: {e}")
-               # figpath_plot = figpath_legend = figpath_zoom = None
-        else:
-            save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
-            try:
-                xlab = rf"$\alpha_{{{cfg["Hybrid_funcs"][0][0]}}}$"
-                figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg,x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
-                                                        saveFileName=save_to,fontsize=45, markersize=45, linewidth=12,linestyle="--",
-                                                            ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
-            except Exception:
-                print("")
-        if "Hybrid" in selected_methods and len(selected_methods)==1:
-
-
-
-            x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
-            if num_hybrid_set>1:
-                x_data_2 = np.array(cfg["Nb_A1"][:num_hybrid_set]) / cfg["n"] * 100
-            y_data_2 = y_data.copy()
-            y_data_2 = [el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
-                        for el in y_data_2]
-            funcs_ = cfg["Hybrid_funcs"][0]
-
-            if num_hybrids>1 and num_hybrid_set>1:
-                x_data_2 = np.array(cfg["Nb_A1"][:num_hybrids]) / cfg["n"] * 100
-                save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
-                xlab = rf"$\alpha_{{{funcs_[0]}}}$"
-
-
+                if cfg["metric"] in ["Bid", "Avg_Bid", "Payoff", "Avg_Payoff", "Res_Payoff","Pareto"]:
+                    LEGENDS3 = LEGENDS2
+                    LEGENDS3.append(cfg["Hybrid_funcs"][0][0])
+                    #print(len(y_data[1]), y_data_2[0])
+                    figpath_plot, figpath_legend, figpath_zoom = plotGame_dim_N(cfg, x_data, y_data, y_data_avg, baseline[0],
+                                                                                cfg["x_label"],
+                                                                                cfg["y_label"], func_group,
+                                                                                saveFileName=save_to,
+                                                                                fontsize=40, markersize=45,
+                                                                                linewidth=12, linestyle="--",
+                                                                                Players2See=cfg["Players2See"],
+                                                                                ylog_scale=cfg["ylog_scale"],
+                                                                                pltText=cfg["pltText"],
+                                                                                step=cfg["plot_step"])
+                else:
+                    print(y_data[0].shape)
+                    figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg, x_data, y_data, cfg["x_label"],
+                                                                          cfg["y_label"], LEGENDS,
+                                                                          saveFileName=save_to, fontsize=45, markersize=45,
+                                                                          linewidth=12, linestyle="--",
+                                                                          ylog_scale=cfg["ylog_scale"],
+                                                                          pltText=cfg["pltText"], step=cfg["plot_step"])
+            elif cfg["num_hybrids"] ==1  and cfg["num_hybrid_set"] >1:
+                y_data_2 = y_data
+                LEGENDS2 = LEGENDS
+                #print(func_group, len(y_data_2))
                 if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                    baseline = payoff_ne * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
+                    baseline = payoff_ne  # * np.ones_like(y_data_2[0])
+                    # y_data_2.append(np.array(baseline))
+                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
 
-                    func_group.append("Non-hybrid")
-                elif cfg["metric"] in ["Bid", "Avg_Bid"] :
-                    baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
+                    func_group.append("NE")
 
-                elif cfg["metric"] in ["Speed"]:
-                    cfg["y_label"] = str(rf"$||BR(z(T) -z(T)||_2$")
-                    baseline = Residual_ne * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
+                if cfg["metric"] in ["Bid", "Avg_Bid"]:
+                    baseline = z_ne.detach().numpy()  # * np.ones_like(y_data_2[0])
+                    func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                    func_group.append("NE")
 
-                    func_group.append("Non-hybrid")
-                elif cfg["metric"] in ["Jain_Index"] :
-                    baseline = Jain_idx_ne * np.ones_like(y_data_2[0])
-
-                    y_data_2.append(np.array(baseline))
-
-                    func_group.append("Non-hybrid")
-                elif cfg["metric"] == "Relative_Efficienty_Loss":
-                    cfg["y_label"] = r"$\rho(z(T))$"
-                    baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
+                if cfg["metric"] in ["Relative_Efficienty_Loss"]:
+                    #cfg["y_label"] = r"$\rho(z(T))$"
+                    baseline = RLoss.detach().numpy()
+                    #.append(np.array(baseline))
                     func_group.append("Non-hybrid")
                 elif cfg["metric"] == "epsilon_error":
-                    cfg["y_label"] = r"$\epsilon(z(T))$"
-                    baseline = cfg["tol"] * np.ones_like(y_data_2[0])
-                    y_data_2.append(np.array(baseline))
+                    #cfg["y_label"] = r"$\epsilon(z(T))$"
+                    baseline = cfg["tol"]#cfg["tol"]
+                   # y_data_2.append(np.array(baseline))
                     func_group.append("Non-hybrid")
-
-                figpath_plot, figpath_zoom, figpath_legend = plotGame_Hybrid_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"],
-                                                                                   cfg["lrMethods"],
-                                                                                   saveFileName=save_to2, funcs_=func_group,
-                                                                                   fontsize=40, markersize=45, linewidth=12,
-                                                                                   linestyle="--",
-                                                                                   Players2See=cfg["Players2See"],
-                                                                                   ylog_scale=cfg["ylog_scale"],
-                                                                                   pltText=cfg["pltText"], step=1)
-
-
-
-            else:
-
-                y_data_2 = y_data_2
-
-                # baseline: une ligne plate de payoff_opt avec la bonne longueur
-                if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff", "Bid", "Avg_Bid"]:
-                    if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
-                        baseline = payoff_ne * np.ones_like(y_data_2[0])
-                        y_data_2.append(np.array(baseline))
-                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
-                        y_data_2.append([el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
-                         for el in y_data_avg])
-
-
-
-                        func_group.append("NE")
-
-                    if cfg["metric"] in ["Bid", "Avg_Bid"] :
-                        baseline = z_ne.detach().numpy() * np.ones_like(y_data_2[0])
-                        y_data_2.append(np.array(baseline))
-                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
-                        y_data_2.append([el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
-                                         for el in y_data_avg])
-                        func_group.append("NE")
-                    if num_hybrids ==1:
-                        LEGENDS3 = LEGENDS2
-                        LEGENDS3.append(cfg["Hybrid_funcs"][0][0])
-                        figpath_plot, figpath_legend, figpath_zoom = plotGame_dim_N(cfg, x_data, y_data_2, cfg["x_label"],
-                                                                                    cfg["y_label"], LEGENDS2,
-                                                                                    saveFileName=save_to,
-                                                                                    fontsize=40, markersize=45,
-                                                                                    linewidth=12, linestyle="--",
-                                                                                    Players2See=cfg["Players2See"],
-                                                                                    ylog_scale=cfg["ylog_scale"],
-                                                                                    pltText=cfg["pltText"],
-                                                                                    step=cfg["plot_step"])
-                    else:
-                        xlab = rf"$\alpha_{{{funcs_[0]}}}$"
-                        save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
-
-                        figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
-                                                                                           saveFileName=save_to2, funcs_=func_group,
+                if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff", "Bid", "Avg_Bid","epsilon_error_Hybrid"]:
+                    LEGENDS3 = LEGENDS2
+                    LEGENDS3.append(cfg["Hybrid_funcs"][0][0])
+                    if cfg["metric"] == "epsilon_error_Hybrid":
+                        baseline = cfg["tol"]
+                        print(y_data[0].shape,Residual_ne)
+                    #print(len(y_data[1]), y_data_2[0])
+                    print(baseline)
+                    figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(cfg,x_data, y_data_2,y_data_avg,baseline, cfg["x_label"], cfg["y_label"], LEGENDS2, saveFileName=save_to,
                                                                      fontsize=40, markersize=45, linewidth=12,linestyle="--",
                                                                      Players2See=cfg["Players2See"],
-                                                ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
-                else:
-                    if cfg["metric"] in ["Relative_Efficienty_Loss"]:
+                                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+                if cfg["metric"] in ["epsilon_error", "Relative_Efficienty_Loss", "Speed"]:
+
+                    figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg, x_data, y_data, cfg["x_label"],
+                                                                          cfg["y_label"], LEGENDS,
+                                                                          saveFileName=save_to, fontsize=40, markersize=45,
+                                                                          linewidth=12, linestyle="--",
+                                                                          ylog_scale=cfg["ylog_scale"],
+                                                                          pltText=cfg["pltText"], step=cfg["plot_step"])
+            elif cfg["num_hybrids"] > 1 and cfg["num_hybrid_set"] >= 1:
+                x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
+                if num_hybrid_set > 1:
+                    x_data_2 = np.array(cfg["Nb_A1"][:num_hybrid_set]) / cfg["n"] * 100
+                y_data_2 = y_data.copy()
+
+                # y_data_2 = [el.detach().cpu().numpy() if hasattr(el, "detach") else np.array(el)
+                #            for el in y_data_2]
+                funcs_ = cfg["Hybrid_funcs"][0]
+
+                if num_hybrids >= 1 and num_hybrid_set >= 1:
+
+                    x_data_2 = np.array(cfg["Nb_A1"][:num_hybrids]) / cfg["n"] * 100
+                    save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
+                    xlab = rf"$\alpha_{{{funcs_[0]}}}$"
+                    # print(len(y_data_2), y_data_2)
+                    print("Residual_ne", Residual_ne)
+                    if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
+                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+
+                        baseline = payoff_ne[0]  # * np.ones_like(y_data_2[0])
+
+                        # y_data_2.append(np.array(baseline))
+
+                        func_group.append("Non-hybrid")
+                    elif cfg["metric"] in ["Bid", "Avg_Bid"]:
+                        func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                        baseline = z_ne.detach().numpy()  # * np.ones_like(y_data_2[0])
+                        # y_data_2.append(np.array(baseline))
+
+                    elif cfg["metric"] in ["Speed"]:
+                        cfg["y_label"] = str(rf"$||BR(z(T)) -z(T)||_2$")
+                        #func_group.insert(0, cfg["Hybrid_funcs"][0][0])
+                        baseline = Residual_ne  # np.ones_like(y_data_2[0])
+                        # y_data_2.append(np.array(baseline))
+
+                        func_group.append("Non-hybrid")
+                    elif cfg["metric"] in ["Jain_Index"]:
+                        baseline = Jain_idx_ne  # * np.ones_like(y_data_2[0])
+
+                        # y_data_2.append(np.array(baseline))
+
+                        func_group.append("Non-hybrid")
+                    elif cfg["metric"] == "Relative_Efficienty_Loss":
                         cfg["y_label"] = r"$\rho(z(T))$"
-                        baseline = RLoss.detach().numpy() * np.ones_like(y_data_2[0])
-                        y_data_2.append(np.array(baseline))
+                        baseline = RLoss.detach().numpy()  # * np.ones_like(y_data_2[0])
+                        # y_data_2.append(np.array(baseline))
                         func_group.append("Non-hybrid")
                     elif cfg["metric"] == "epsilon_error":
                         cfg["y_label"] = r"$\epsilon(z(T))$"
-                        baseline = cfg["tol"] * np.ones_like(y_data_2[0])
-                        y_data_2.append(np.array(baseline))
+                        baseline = Residual_ne  # * np.ones_like(y_data_2[0])
+                        # y_data_2.append(np.array(baseline))
                         func_group.append("Non-hybrid")
+                    figpath_plot, figpath_zoom, figpath_legend = plotGame_Hybrid_last(cfg, x_data_2, y_data_2,y_data_avg, baseline,
+                                                                                      xlab, cfg["y_label"],
+                                                                                      cfg["lrMethods"],
+                                                                                      saveFileName=save_to2,
+                                                                                      funcs_=func_group,
+                                                                                      fontsize=40, markersize=45,
+                                                                                      linewidth=12,
+                                                                                      linestyle="--",
+                                                                                      Players2See=cfg["Players2See"],
+                                                                                      ylog_scale=cfg["ylog_scale"],
+                                                                                      pltText=cfg["pltText"], step=1)
+            else:
+                try:
 
-                    save_to2 = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_player"
-                    #xlab = rf"$A\alpha_{{{funcs_[0]}}}$"
-                    xlab = cfg["x_label"]
-                    x_data_2 = np.array(cfg["Nb_A1"]) / cfg["n"] * 100
-                    if cfg["metric"] in ["Speed"]:
-                        cfg["y_label"] =  "‖BR(z(T)) − z(T)‖"
+                    y_data_2 = y_data
+                    LEGENDS2 = LEGENDS
 
-                    if num_hybrid_set == 1 and num_hybrids == 1:
-                        x_data_2 = x_data
-                    else:
-                        xlab = rf"$\alpha_{{{funcs_[0]}}}$"
-                    figpath_plot, figpath_zoom, figpath_legend  = plotGame_dim_N_last(cfg, x_data_2, y_data_2, xlab, cfg["y_label"], cfg["lrMethods"],
-                                                                                       saveFileName=save_to2, funcs_=func_group,
-                                                                 fontsize=40, markersize=45, linewidth=12,linestyle="--",
-                                                                 Players2See=cfg["Players2See"],
-                                            ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+                    # baseline: une ligne plate de payoff_opt avec la bonne longueur
+
+                    if cfg["metric"] in ["Payoff", "Avg_Payoff", "Res_Payoff"]:
+                        baseline = payoff_ne #* np.ones_like(y_data_2[0])
+                        #y_data_2.append(baseline)
 
 
+                        LEGENDS2.append("NE")
+
+                    elif cfg["metric"] in ["Bid", "Avg_Bid"] :
+                        baseline = z_ne.detach().numpy() #* np.ones_like(y_data_2[0])
+                       # y_data_2.append(np.array(baseline))
+                        LEGENDS2.append("NE")
+
+                    figpath_plot, figpath_legend, figpath_zoom =plotGame_dim_N(cfg,x_data, y_data_2,y_data_avg,baseline[0], cfg["x_label"], cfg["y_label"], LEGENDS2, saveFileName=save_to,
+                                                                     fontsize=40, markersize=45, linewidth=12,linestyle="--",
+                                                                     Players2See=cfg["Players2See"],
+                                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+                except Exception as e:
+                        print("plotGame_dim_N")
+                   # st.warning(f"⚠️ Error generating static plot: {e}")
+                   # figpath_plot = figpath_legend = figpath_zoom = None
+        else:
+            save_to = cfg['metric'] + f"_alpha{cfg['alpha']}_gamma{cfg["gamma"]}_n_{cfg['n']}"
+            try:
+                #xlab = rf"$\alpha_{{{cfg["Hybrid_funcs"][0][0]}}}$"
+
+                figpath_plot, figpath_legend, figpath_zoom = plotGame(cfg,x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
+                                                        saveFileName=save_to,fontsize=45, markersize=45, linewidth=12,linestyle="--",
+                                                            ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
+                print("ioouiouio")
+            except :
+                print("plotGame")
 
         fig.update_layout(
             title=f"Evolution of {y_label_map[cfg['metric']]}",

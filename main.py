@@ -1,3 +1,5 @@
+#main.py
+
 import os
 import numpy as np
 
@@ -38,8 +40,8 @@ class SimulationRunner:
         eps = epsilon * torch.ones(1)
         z_sol_equ = solve_quadratic(self.config["n"],  self.config["a"],  self.config["delta"])
         var_init = self.config["var_init"]
-        bid0 = eps*torch.rand(1)#torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
-
+        #if "Hybrid" in lrMethods:
+        bid0 = eps*torch.rand(1) #torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
         c_min = epsilon
 
         a_vector = torch.tensor(self.config["a_vector"], dtype=torch.float64)#torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
@@ -71,7 +73,7 @@ class SimulationRunner:
         status_text = st.empty()
         game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
-            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=True
+            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=False
         )
         z_ne =  Bids_Opt[0][-1]
         jain_index_ne = Bids_Opt[2][-1]
@@ -102,10 +104,16 @@ class SimulationRunner:
         for i in range(self.config["Nb_random_sim"]):
             if not self.config["keep_initial_bid"]:
                 if self.config["Random_Initial_Bid"]:
-                    bid0 = (c - epsilon) * torch.rand(n) + epsilon
+                    if "Hybrid" in lrMethods:
+                        bid0 = (c - epsilon) * torch.rand(n) + epsilon
+                        bid0 = eps * bid0[0]
+                    else:
+                        bid0 = (c - epsilon) * torch.rand(n) + epsilon
+
                 else:
                     var_init = self.config["var_init"]
                     bid0 =  torch.abs((2 * var_init) * torch.rand(n) + z_sol_equ - var_init)
+                    bid0 = eps * bid0[0]
             idx = 0
             idx_rmfq = 0
             NbHybrid = 0
@@ -123,7 +131,7 @@ class SimulationRunner:
 
                 if lrMethod == "Hybrid" :
                     NbHybrid = NbHybrid+1
-
+                    #print(self.config["Hybrid_funcs"])
                     Hybrid_sets = Global_Hybrids_set[(NbHybrid-1)%self.config["num_hybrids"]]#make_subset(self.config["n"],NbHybrid)# self.config["Hybrid_sets"][NbHybrid-1]
                     Hybrid_funcs = self.config["Hybrid_funcs"][NbHybrid-1]
                     #print(NbHybrid)
@@ -131,6 +139,7 @@ class SimulationRunner:
 
                         lrMethod2 = f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][NbHybrid-1]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][NbHybrid-1]})"
                     key = tuple(Hybrid_funcs + ["Hybrid"])
+
                     if key not in copy_keys:
                         copy_keys[lrMethod2] = key
                     idx += 1
@@ -177,6 +186,7 @@ class SimulationRunner:
                     'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
                     'Payoff': Payoff_Norm.detach().numpy(), #Utility_set[0].detach().numpy(),#
                     'epsilon_error': Utility_set[4].detach().numpy(),
+                    'epsilon_error_Hybrid': Utility_set[5].detach().numpy(),
                     'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
                     'Avg_Payoff': AvgPayoff_norm.detach().numpy(), # Utility_set[1].detach().numpy(),
                     'Res_Payoff': Utility_set[2].detach().numpy(),
@@ -217,6 +227,7 @@ class SimulationRunner:
 
             for k, v_list in metrics.items():
                 # Cas scalaires (pas des tableaux)
+                #print(method,k)
 
                 if k in ["convergence_iter"]:
                     self.results["methods"][method][k] = np.mean(v_list)
@@ -227,46 +238,6 @@ class SimulationRunner:
                     mean_val = np.mean(np.stack(v_list), axis=0)
                     #print(method,k,mean_val)
                     self.results["methods"][method][k] = mean_val
-
-
-
-                   # print(k,self.results["methods"][method][k]
-
-                try:
-
-                    if is_hybrid :#and len(self.config["selected_methods"])==1:
-
-
-                        # Construire un nom plus clair pour l’hybride
-                        eta_val = self.config["Learning_rates"][idxHybrid]
-                        key_name = rf"{keys[1]}"# -- $\eta={eta_val}$"
-                        if key_name not in self.results["methods"]:
-                            self.results["methods"][key_name] = {}
-
-                        if k not in self.results["methods"][key_name]:
-                            self.results["methods"][key_name][k] = []
-
-                        # Ajouter la dernière valeur de la courbe
-
-                        if k in ["convergence_iter"]:
-                            self.results["methods"][key_name][k] = np.mean(v_list)
-                        else:
-                            self.results["methods"][key_name][k].append(mean_val[-1])
-                            #print("last", mean_val[-1])
-
-                    #else:
-                    #    print(f" np.mean(v_list){ np.mean(v_list)}")
-                    #    self.results["methods"][method][k] = np.mean(v_list)
-
-                except Exception:
-                    print()
-
-                    #self.results["methods"][method][k] = np.mean(v_list)
-
-            if is_hybrid:
-                idxHybrid += 1  # ⚡ n’incrémenter que si c’est un hybride
-            #print(k, self.results["methods"][method][k])
-
         return self.results
 
 
