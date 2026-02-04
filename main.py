@@ -50,7 +50,7 @@ class SimulationRunner:
         d_vector = 0.7 * dmin*0
 
         # Compute optimum
-        x_log_optimum = x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0)
+        x_log_optimum = x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0,alpha)
         Valuation_log_opt = Valuation(x_log_optimum, a_vector, d_vector, alpha)
         SW_opt = (torch.sum(Valuation_log_opt))
         LSW_opt = torch.sum(torch.minimum(Valuation_log_opt, c_vector)).detach().numpy()
@@ -73,7 +73,7 @@ class SimulationRunner:
         status_text = st.empty()
         game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
-            "SBRD", a_vector, c_vector, d_vector, T, eta, bid0, stop=False
+            "DAQ_F", a_vector, c_vector, d_vector, T, eta, bid0, stop=False
         )
         z_ne =  Bids_Opt[0][-1]
         jain_index_ne = Bids_Opt[2][-1]
@@ -166,7 +166,7 @@ class SimulationRunner:
                 Distance2optSW = 1 / n * torch.abs(SW_opt - Welfare[0])
                 Pareto_check =   (Welfare[2] -Valuation_log_opt*torch.ones_like(Welfare[2]) ) + (z_sol_equ*torch.ones_like(Bids[0]) - Bids[0])
                 LSW = Welfare[1]
-                Relative_Efficienty_Loss = torch.abs((SocialWelfare - SW_opt)/SW_opt) * 100
+                Relative_Efficienty_Loss = torch.abs((SocialWelfare - SW_opt)/SW_opt) #* 100
 
                 Payoff_Norm = (Utility_set[0] - Payoff_min)/(Payoff_max - Payoff_min )
                 AvgPayoff_norm = (Utility_set[1] - Payoff_min ) /(Payoff_max - Payoff_min)
@@ -196,7 +196,7 @@ class SimulationRunner:
                 }
 
                 # --- Accumulate for averaging ---
-
+                print(( Bids[0].detach().numpy())[-1], x_log_optimum)
                 if lrMethod2 not in self.results["methods"]:
                     # Initialize lists to store multiple runs
                     self.results["methods"][lrMethod2] = {k: [v] for k, v in sim_result.items()}

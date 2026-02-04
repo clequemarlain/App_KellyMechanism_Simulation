@@ -175,6 +175,180 @@ def solve_nonlinear_eq(a, s, alpha, eps, c_vector, price=1.0, max_iter=100, tol=
 
     br = Q1(torch.tensor(z_list, dtype=torch.float32), eps, c_vector, price)
     return br
+
+###########" Test all
+from scipy import optimize
+
+
+def alpha_fair_utility(x: np.ndarray, alpha: float) -> np.ndarray:
+    """
+    Standard alpha-fair utility (no shift):
+      alpha=1: log(x)
+      alpha!=1: x^(1-alpha)/(1-alpha)
+    Limit alpha->0 gives x.
+    """
+    x = np.asarray(x, dtype=float)
+    if np.isclose(alpha, 1.0):
+        return np.log(x)
+    else:
+        return np.power(x, 1.0 - alpha) / (1.0 - alpha)
+
+def alpha_fair_inverse_utility(y: np.ndarray, alpha: float) -> np.ndarray:
+    """
+    Inverse of the standard alpha-fair utility above:
+      alpha=1: exp(y)
+      alpha!=1: ((1-alpha)*y)^(1/(1-alpha))
+    """
+    y = np.asarray(y, dtype=float)
+    if np.isclose(alpha, 1.0):
+        return np.exp(y)
+    else:
+        base = (1.0 - alpha) * y
+        # In typical use, base should be >= 0 when alpha < 1.
+        # For alpha > 1, base can be negative and still yield positive x
+        # only if y is negative and the exponent is rational with odd denom etc.
+        # Practically, your model parameters should make gamma_x well-defined.
+        if np.any(base <= 0):
+            # If you want strict feasibility, you can raise instead.
+            base = np.maximum(base, 1e-18)
+        return np.power(base, 1.0 / (1.0 - alpha))
+def box_waterfilling_equal_share(l, u, S, tol=1e-12):
+    """
+    Return a 'symmetric / fair' feasible x solving:
+      find x s.t. sum x = S, l <= x <= u
+    by equal-sharing waterfilling (tie-break for alpha=0 when a_i are equal).
+    """
+    l = np.asarray(l, float)
+    u = np.asarray(u, float)
+
+    # Feasibility clamping
+    Smin, Smax = np.sum(l), np.sum(u)
+    if S <= Smin + tol:
+        return l.copy()
+    if S >= Smax - tol:
+        return u.copy()
+
+    x = l.copy()
+    remaining = S - np.sum(x)
+
+    active = np.ones_like(x, dtype=bool)
+
+    while remaining > tol:
+        idx = np.where(active)[0]
+        if idx.size == 0:
+            break
+
+        # equal increment among active
+        inc = remaining / idx.size
+
+        # apply increment, but cap at u
+        x_new = x.copy()
+        x_new[idx] = np.minimum(x[idx] + inc, u[idx])
+
+        used = np.sum(x_new - x)
+        x = x_new
+        remaining -= used
+
+        # update active set: those not saturated
+        active = x < (u - tol)
+
+    return x
+
+def compute_optimal_x_alpha(
+    c_vector,
+    a_vector,
+    eps,
+    delta: float,
+    d_vector,
+    alpha: float,
+):
+    """
+    Solve:
+      maximize  sum_i [ a_i * V_alpha(x_i) + d_i ]
+      s.t.      sum_i x_i = S
+                eps_x_i <= x_i <= gamma_x_i
+
+    where:
+      eps_x_i = eps_i / (eps_i + sum(c) - c_i + delta)   (your min_fraction)
+      S = sum(c)/(sum(c)+delta)
+      gamma_x_i = V_alpha^{-1}((c_i - d_i)/a_i)          (generalized cap)
+
+    For alpha>0: KKT gives a_i * V'(x_i)=lambda -> x_i=(a_i/lambda)^(1/alpha), then clip.
+    For alpha=0: linear objective -> greedy fill by descending a_i.
+    """
+    a = np.asarray(a_vector, dtype=float)
+    c = np.asarray(c_vector, dtype=float)
+    eps = np.asarray(eps, dtype=float)
+    d = np.asarray(d_vector, dtype=float)
+
+    def min_fraction(eps: np.ndarray, budgets: np.ndarray, delta: float):
+        return eps / (eps + np.sum(budgets) - budgets + delta)
+
+    # lower bounds
+    eps_x = min_fraction(eps, c, delta)
+
+    # total available resource
+    C = np.sum(c)
+    S = C / (C + delta)
+
+    # upper bounds via generalized inverse utility:
+    # a_i * V(x_i) + d_i <= c_i  =>  V(x_i) <= (c_i - d_i)/a_i
+    y_cap = (c - d) / a
+    gamma_x = alpha_fair_inverse_utility(y_cap, alpha)
+
+    # Edge case: if S is outside feasible sum interval, KKT solution saturates
+    sum_min = np.sum(eps_x)
+    sum_max = np.sum(gamma_x)
+
+    if S <= sum_min:
+        return eps_x.copy()
+    if S >= sum_max:
+        return gamma_x.copy()
+
+    # --- alpha = 0: linear case, maximize sum_i a_i x_i over a box + sum constraint
+    if np.isclose(alpha, 0.0):
+        x = eps_x.copy()
+        remaining = S - np.sum(x)
+
+        order = np.argsort(-a)  # descending a_i
+        for i in order:
+            if remaining <= 0:
+                break
+            add = min(remaining, gamma_x[i] - x[i])
+            if add > 0:
+                x[i] += add
+                remaining -= add
+        return x
+
+    # --- alpha > 0: bisection on lambda with clipped KKT form
+    alpha_val = float(alpha)
+
+    def x_from_lambda(lmbda: float) -> np.ndarray:
+        lmbda = max(lmbda, 1e-18)
+        x_unclipped = np.power(a / lmbda, 1.0 / alpha_val)
+        return np.minimum(np.maximum(x_unclipped, eps_x), gamma_x)
+
+    def total_x_minus_S(lmbda: float) -> float:
+        return float(np.sum(x_from_lambda(lmbda)) - S)
+
+    # Lambda bounds induced by box:
+    # x_i <= gamma_i  => (a_i/lambda)^(1/alpha) <= gamma_i  => lambda >= a_i / gamma_i^alpha
+    # x_i >= eps_i    => lambda <= a_i / eps_i^alpha
+    lmbda_min = np.min(a / np.power(gamma_x, alpha_val))
+    lmbda_max = np.max(a / np.power(eps_x, alpha_val))
+
+    # Safety in case of numerical weirdness
+    lmbda_min = max(lmbda_min, 1e-18)
+    lmbda_max = max(lmbda_max, lmbda_min * 1.000001)
+
+    # Bisection
+    lmbda = optimize.bisect(total_x_minus_S, lmbda_min, lmbda_max, xtol=1e-12, maxiter=200)
+
+    return x_from_lambda(lmbda)
+
+
+#############"
+
 def compute_optimal_x(c_vector, a_vector, eps, delta: float, d_vector: np.ndarray):
     def min_fraction(eps: np.ndarray, budgets: np.ndarray, delta: float):
         return eps / (eps + np.sum(budgets) - budgets + delta)
@@ -215,8 +389,8 @@ def compute_optimal_x(c_vector, a_vector, eps, delta: float, d_vector: np.ndarra
     return np.minimum(np.maximum(a_vector / lmbda, eps_x), gamma_x)
 
 
-def x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0):
-    x_opt = compute_optimal_x(c_vector, a_vector, eps, delta, d_vector)#gradient_descent(bid0,c_vector, a_vector, eps, delta, d_vector,price)#
+def x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0,alpha):
+    x_opt = compute_optimal_x_alpha(c_vector, a_vector, eps, delta, d_vector,alpha)#gradient_descent(bid0,c_vector, a_vector, eps, delta, d_vector,price)#
     x_opt = torch.tensor(x_opt, dtype=torch.float64)
     #x_opt = gradient_descent(bid0,c_vector, a_vector, eps, delta, d_vector,price)
     return x_opt# LSW_func(x_opt, c_vector, a_vector, d_vector, 1)
@@ -342,9 +516,81 @@ def LSW_func(x, budgets, a_vector, d_vector, alpha):
 
 
 import numpy as np
+import numpy as np
+
+def compute_G_alpha_fair(a_i: float, delta: float, epsilon: float, c: float, n: int, alpha: float,) -> float:
+    """
+    Upper bound G for |∂/∂z_i [ a_i * V(x_i(z)) - z_i ]| over z_i in [epsilon, c],
+    where x_i = z_i / (z_i + s), s = sum_{j!=i} z_j + delta, and V is alpha-fair.
+
+    Alpha-fair family:
+      - alpha = 1: V(x) = log x  (so V'(x)=1/x)
+      - alpha != 1: V(x) = x^(1-alpha)/(1-alpha)  (so V'(x)=x^(-alpha))
+
+    Parameters
+    ----------
+    a_i : float
+        Valuation weight for agent i.
+    alpha : float
+        Alpha-fairness parameter (>=0 typically).
+    delta : float
+        Regularization in denominator: s includes +delta.
+    epsilon : float
+        Lower bound on bids: z_i >= epsilon.
+    c : float
+        Upper bound on bids: z_i <= c.
+    n : int
+        Number of players.
+
+    Returns
+    -------
+    G : float
+        Upper bound on the gradient magnitude.
+    """
+
+    if n < 2:
+        raise ValueError("Require n >= 2 so that s = sum_{j!=i} z_j + delta makes sense.")
+
+    smin = (n - 1) * epsilon + delta
+    smax = (n - 1) * c + delta
+
+    if smin <= 0:
+        # With delta possibly negative (rare), prevent invalid region
+        raise ValueError("smin must be > 0 for this bound (check delta/epsilon).")
+
+    def grad_phi(z: float, s: float) -> float:
+        # ∂phi/∂z = a_i * s * (z+s)^(alpha-2) * z^(-alpha) - 1
+        return a_i * s * (z + s)**(alpha - 2.0) * (z**(-alpha)) - 1.0
+
+    # Candidate s values:
+    # For alpha<1, h(s)=s*(z+s)^(alpha-2) can have an interior maximizer at s* = z/(1-alpha)
+    # For alpha>=1, monotone in s, so endpoints suffice.
+    s_candidates = [smin, smax]
+
+    if alpha < 1.0:
+        # Interior stationary point for h(s) occurs at s* = z/(1-alpha)
+        # We'll add it for both z endpoints to be safe.
+        for z in (epsilon, c):
+            s_star = z / (1.0 - alpha)
+            if smin <= s_star <= smax:
+                s_candidates.append(s_star)
+
+    # Evaluate |grad| on a small set of candidate points.
+    # In z, the term decreases with z, but |.| can still be large near -1,
+    # so we check both endpoints (epsilon and c).
+    candidates = []
+    for z in (epsilon, c):
+        for s in s_candidates:
+            candidates.append(abs(grad_phi(z, s)))
+
+    #a_i*(epsilon/(epsilon+smin))**(-alpha)* (smin/(epsilon *(epsilon+smin))**2)
+    # Also ensure at least 1 is covered (since as z grows, grad → -1 in many cases)
+    G = max(abs(a_i*(epsilon/(epsilon+smax))**(-alpha)* (smax/(epsilon *(epsilon+smax))**2) - 1),
+            abs(a_i*(epsilon/(epsilon+smin))**(-alpha)* (smin/(epsilon *(epsilon+smin))**2) - 1))# max(1.0, max(candidates))
+    return float(G)
 
 
-def compute_G(a_i, delta, epsilon,c, n):
+def compute_G(a_i, delta, epsilon,c, n,alpha):
     """
     Compute Lipschitz constant G for grad(phi_i).
 
@@ -486,7 +732,11 @@ class GameKelly:
                                             a_vector, self.delta, self.alpha, self.price,
                                             b=0)
             err =  torch.norm(z_br - z)#,float('inf'))#/(z.shape[-1] **(0.5)*torch.max(c_vector - self.epsilon))#, self.tol * torch.ones(1))
-
+        def phi( z):
+            x = self.fraction_resource(z)
+            V = V_func(x, self.alpha)
+            return a_vector * V - self.price * z + d_vector
+        #print(self.grad_phi(phi,z))
         return err   # torch.norm(self.grad_phi(z))
 
     def epsilon_error(self, z: torch.tensor, a_vector, c_vector, d_vector):
@@ -500,6 +750,9 @@ class GameKelly:
             z_br = BR_alpha_fair(self.epsilon, c_vector, z, p,
                                             a_vector, self.delta, self.alpha, self.price,
                                             b=0)
+            #print(self.alpha)
+            #print(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price)
+
             payoff_zbr = (Payoff(self.fraction_resource(z_br), z_br, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
             payoff_z = (Payoff(self.fraction_resource(z), z, a_vector, d_vector, self.alpha, self.price) - self.payoff_min) / (self.payoff_max - self.payoff_min)
             err = payoff_zbr - payoff_z
@@ -596,7 +849,7 @@ class GameKelly:
         n = len(bids)
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n,self.alpha)
 
         eta_t = D / (2 * G * np.sqrt(t))
         z_candidate = bids + eta_t * grad_t
@@ -620,7 +873,7 @@ class GameKelly:
         n = len(bids)
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon,c_vector[i], self.epsilon, n,self.alpha)
 
         # Step-size (theorem 3.1 Hazan)
         #if vary:
@@ -648,7 +901,7 @@ class GameKelly:
         D = c_vector -  self.epsilon #torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n,self.alpha)
 
         #G = max_diag_grad_norm(a_vector, c_vector,self.epsilon, self.delta)
         eta_t =  D / (G * np.sqrt(self.T))
@@ -669,7 +922,7 @@ class GameKelly:
         D = c_vector -  self.epsilon # si c est borne sup
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n,self.alpha)
 
         eta_t = D / (2 * G * np.sqrt(t))
         acc_grad_copy += grad_t * eta_t
@@ -690,14 +943,15 @@ class GameKelly:
 
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n,self.alpha)
         eta_t = D / (2*G * np.sqrt(t))
 
         acc_grad_copy += grad_t
         z_t = Q1(acc_grad_copy * eta_t, self.epsilon, c_vector, self.price)
         return z_t, acc_grad_copy
 
-    def DAQ_F(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None, Hybrid_sets=None):
+    def DAQ_F(self, t, a_vector, c_vector, d_vector, eta, bids, acc_grad, p=0, vary=False, Hybrid_funcs=None,
+              Hybrid_sets=None):
 
         def phi(z):
             x = self.fraction_resource(z)
@@ -708,14 +962,14 @@ class GameKelly:
         grad_t = self.grad_phi(phi, bids)
         n = len(bids)
 
-        D = c_vector -  self.epsilon#torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
+        D = c_vector - self.epsilon  # torch.sqrt(c_vector **2 -  self.epsilon **2) # si c est borne sup
         G = torch.zeros_like(a_vector)
         for i in range(n):
-            G[i] = compute_G(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n)
+            G[i] = compute_G_alpha_fair(a_vector[i], self.epsilon, c_vector[i], self.epsilon, n, self.alpha)
 
         # Step-size (theorem 3.1 Hazan)
 
-        eta_t =  D / (G * np.sqrt(self.T))  #self.T fallback pour t=0
+        eta_t = D / (G * np.sqrt(self.T))  # self.T fallback pour t=0
 
         acc_grad_copy += grad_t
         z_t = Q1(acc_grad_copy * eta_t, self.epsilon, c_vector, self.price)
@@ -886,7 +1140,7 @@ def plotGame(config,
 ):
     plt.figure(figsize=(18, 12))
     y_data = np.array(y_data)
-    print(y_data[-1])
+    #print(y_data[-1])
 
     plt.rcParams.update({'font.size': fontsize})
     x_data_copy = x_data.copy()
@@ -928,7 +1182,7 @@ def plotGame(config,
             last_y = y_data_i[-1]
             lastValue = f"{last_y:.2e}"
             if config.get("metric", "") == "Relative_Efficienty_Loss":
-                lastValue = f"{last_y:.3f}%"
+                lastValue = f"{100*last_y:.3f}%"
             plt.text(
                 last_x, last_y,
                 lastValue,
@@ -944,7 +1198,7 @@ def plotGame(config,
         label.set_fontweight("bold")
 
     if config.get("metric", "") == "Relative_Efficienty_Loss":
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=0))
         #ax.yaxis.set_ylim(-1, 1)
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2 * fontsize)
@@ -1013,7 +1267,7 @@ def plotGame(config,
             y_max_local = local_y_max
         else:
             y_min_local, y_max_local = y_min, y_max
-            print(y_min_local, y_max_local)
+            #print(y_min_local, y_max_local)
 
         # sécurité si tout est constant
         dy = y_max_local - y_min_local
@@ -1043,13 +1297,13 @@ def plotGame(config,
             axins.set_ylim(y1, y2)
 
         # nettoyage visuel de l'inset
-        print(y1, y2)
+        #print(y1, y2)
         for label in axins.get_xticklabels() + axins.get_yticklabels():
             label.set_fontweight("bold")
             label.set_fontsize(fontsize *0.6)
         if config.get("metric", "") == "Relative_Efficienty_Loss":
             # Affiche les ticks en pourcentage (0–100%)
-            axins.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=3))
+            axins.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=3))
 
         #if config.get("metric","") == "epsilon_error":
         #    axins.yaxis.set_major_formatter(mticker.FormatStrFormatter("%.3f"))
@@ -1189,7 +1443,7 @@ def plotGame_dim_N(
                 )
         else:
             k = i
-            print(i)
+           # print(i)
             fc = legends[k]
             if config["num_hybrids"] == 1 and config["num_hybrid_set"] == 1:
                 k = len(funcNo_NE) - i - 1
@@ -1303,8 +1557,8 @@ def plotGame_dim_N(
     for lab in ax.get_xticklabels() + ax.get_yticklabels():
         lab.set_fontweight("bold")
 
-    if config.get("metric", "") == "Relative_Efficienty_Loss":
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
+    #if config.get("metric", "") == "Relative_Efficienty_Loss":
+    #    ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2 * fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2 * fontsize)
@@ -1644,7 +1898,7 @@ def plotGame_Hybrid_last(
 
     ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     if config.get("metric", "") == "Relative_Efficienty_Loss":
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=1))
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=1))
 
     ax.set_ylabel(f"{y_label}", fontweight="bold", fontsize=2 * fontsize)
     ax.set_xlabel(f"{x_label}", fontweight="bold", fontsize=2 * fontsize)
@@ -1695,7 +1949,7 @@ def plotGame_Hybrid_last(
 
                 local_y_min = min(local_y_min, min(np.min(y_vals), np.min(y_vals_agg)))
                 local_y_max = max(local_y_max, max(np.max(y_vals), np.max(y_vals_agg)))
-                print(f"local_y_max:{local_y_max},{local_y_min}")
+                #print(f"local_y_max:{local_y_max},{local_y_min}")
 
                 axins.plot(
                     x_vals[::step],
@@ -1757,7 +2011,7 @@ def plotGame_Hybrid_last(
         x2_pad = x2 + pad_frac_x * dx
         y1_pad = y1 - pad_frac_y * dy
         y2_pad = y2 + pad_frac_y * dy
-        print(y1_pad, y2_pad, y1, y2)
+        #print(y1_pad, y2_pad, y1, y2)
         axins.set_xlim(x1_pad, x2_pad)
 
         if ylog_scale:
@@ -1881,7 +2135,7 @@ def plotGame_dim_N_last(config,
         color = "red" if fc == "Non-hybrid" or fc == "NE" else colors[j]
         marker = "" if "Non-hybrid" or fc == "NE" else markers[j % len(markers)]
         if fc in METHODS:
-            print(fc)
+            #print(fc)
             color = COLORS_METHODS[fc]
             marker = MARKERS_METHODS[fc]
 
@@ -1948,7 +2202,7 @@ def plotGame_dim_N_last(config,
         if pltText:
             lastValue = f"{curve[-1]:.2e}"
             if config.get("metric", "") == "Relative_Efficienty_Loss":
-                lastValue = f"{curve[-1]:.3f}%"
+                lastValue = f"{100*curve[-1]:.3f}%"
             plt.text(x_data[-1], curve[-1], lastValue,
                 fontweight="bold",
                 fontsize=fontsize,
@@ -1979,7 +2233,7 @@ def plotGame_dim_N_last(config,
         if pltText:
             lastValue = f"{curve_NE[-1]:.2e}"
             if config.get("metric", "") == "Relative_Efficienty_Loss":
-                lastValue = f"{curve_NE[-1]:.3f}%"
+                lastValue = f"{100*curve_NE[-1]:.3f}%"
             plt.text(x_data[-1], curve_NE[-1], lastValue,
                      fontweight="bold",
                      fontsize=fontsize,
@@ -1997,7 +2251,7 @@ def plotGame_dim_N_last(config,
         ax.xaxis.set_major_formatter(mticker.PercentFormatter(xmax=100))
     if config.get("metric", "") == "Relative_Efficienty_Loss":
         # Affiche les ticks en pourcentage (0–100%)
-        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=3))
+        ax.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=3))
 
     plt.ylabel(str(f"{y_label}"), fontweight="bold", fontsize=2*fontsize)
     plt.xlabel(str(f"{x_label}"), fontweight="bold", fontsize=2*fontsize)
@@ -2114,7 +2368,7 @@ def plotGame_dim_N_last(config,
 
     if config.get("metric", "") == "Relative_Efficienty_Loss":
         # Affiche les ticks en pourcentage (0–100%)
-        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=100, decimals=0))
+        ax_zoom.yaxis.set_major_formatter(mticker.PercentFormatter(xmax=1, decimals=0))
 
     ax_zoom.tick_params(axis="both", labelsize=2*markersize)
     ax_zoom.set_ylabel("", fontweight="bold")
@@ -2260,7 +2514,9 @@ def plotGame2(config,
     return figpath_plot, figpath_legend, figpath_plot
 
 
-
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
 def plotGame_Jain(config,results, list_gamma,
     ylog_scale=False, fontsize=40, markersize=40, linewidth=12,
     linestyle="-", pltText=False, step=1,tol=1e-6
@@ -2315,3 +2571,83 @@ def plotGame_Jain(config,results, list_gamma,
 
 
     return figpath_plot
+
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+def plot_main_bar_gamma_curvature(
+    res,
+    lrMethod_fixed="OGD_V",
+    show_values=True,
+    eps_floor=1e-12,     # avoids log(0) if a value is exactly 0
+):
+    """
+    Grouped bars (side-by-side) of 100*rho_mean on a log y-axis.
+    No 'advantage' plot. No overlay. Linear and Log are beside each other for each gamma.
+
+    Returns: df, fig
+    """
+
+    rows = []
+    for gamma, by_alpha in res.items():
+        for alpha, stats in by_alpha.items():
+            util = "Linear" if np.isclose(alpha, 0.0) else "Log"
+            rows.append({
+                "gamma": float(gamma),
+                "alpha": float(alpha),
+                "Utility": util,
+                "rho_mean": float(stats["rho_mean"]),
+                "rho_std": float(stats.get("rho_std", 0.0)),
+            })
+
+    df = pd.DataFrame(rows).sort_values(["gamma", "alpha"])
+    st.dataframe(df)
+
+    # percentage + floor for log scale
+    df["rho_pct"] = 100.0 * df["rho_mean"]
+    df["rho_pct_plot"] = np.maximum(df["rho_pct"], 100.0 * eps_floor)
+
+    fig = go.Figure()
+    colors = {
+        "Linear": "red",
+        "Log": "green",
+    }
+
+    for util_name in ["Log", "Linear",]:
+        dfi = df[df["Utility"] == util_name].sort_values("gamma")
+
+        # error bars (in %)
+        err = 100.0 * dfi["rho_std"].to_numpy()
+        err_visible = bool(np.any(err > 0))   # <-- Python bool (fix)
+
+        text = None
+        if show_values:
+            text = [f"{v:.2e}%" if v < 0.01 else f"{v:.3g}%" for v in dfi["rho_pct"]]
+
+        fig.add_trace(go.Bar(
+            x=dfi["gamma"].to_numpy(),
+            y=dfi["rho_pct_plot"].to_numpy(),
+            name=util_name,
+            error_y=dict(type="data", array=err, visible=err_visible),
+            text=text,
+            textposition="outside" if show_values else None,
+            cliponaxis=False
+        ))
+
+    fig.update_layout(
+        barmode="group",
+        template="plotly_white",
+        title=f"Relative efficiency loss vs heterogeneity γ (log-scale %, learning: {lrMethod_fixed})",
+        xaxis_title="Heterogeneity γ",
+        yaxis_title="Relative efficiency loss 100·ρ(z(T)) (%) [log scale]",
+        yaxis_type="log",
+        legend=dict(orientation="h", y=-0.2),
+        height=520,
+        margin=dict(t=70, b=90)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+    return df, fig

@@ -17,6 +17,7 @@ from src.game.config import SIMULATION_CONFIG_table as DEFAULT_CONFIG_TABLE
 from src.game.description import ALGO_DESCRIPTIONS
 from main_table_simulation import run_simulation_table_avg, display_results_streamlit_dict
 from src.game.Jain_index import run_jain_vs_gamma, plot_jain_vs_gamma
+from linear_VS_log import run_main_gamma_curvature
 #from simulation_param_n_gamma import *
 
 # -----------------------
@@ -1098,3 +1099,126 @@ if 'jain_results' in st.session_state:
         st.info("PDF files not available yet.")
     else:
          st.info("ℹ️ No results yet. Click 📈 Run Jain(gamma) to start.")
+
+
+import os
+
+import numpy as np
+import matplotlib.pyplot as plt
+
+def save_bar_gamma_curvature_pdf(
+    df,
+    filename="bar_gamma_curvature.pdf",
+    eps_floor=1e-12,log_scale=True,
+):
+    """
+    Grouped bar plot (Linear vs Log) with:
+      - y = 100*rho_mean (percentage)
+      - log-scale y-axis
+      - numeric % labels on bars
+    """
+
+    gammas = sorted(df["gamma"].unique())
+    utilities = [ "Log", "Linear"]
+
+    width = 0.35
+    x = np.arange(len(gammas))
+    plt.rcParams.update({'font.size': 16})
+    fig, ax = plt.subplots(figsize=(8, 5))
+    colors = {
+        "Linear": "red",
+        "Log": "blue",
+    }
+
+    for i, util in enumerate(utilities):
+        vals = (
+            df[df["Utility"] == util]
+            .sort_values("gamma")["rho_mean"]
+            .to_numpy()
+        ) * 100.0
+
+        # avoid log(0)
+        vals_plot = np.maximum(vals, 100.0 * eps_floor)
+
+
+        bars = ax.bar(
+            x + (i - 0.5) * width,
+            vals_plot,
+            width,
+            color = colors[util],
+            label=util
+        )
+
+        # ---- ADD PERCENTAGE LABELS ----
+        for bar, v in zip(bars, vals):
+            if v < 0.001:
+                label = f"{v:.2e}%"
+            else:
+                label = f"{v:.3g}%"
+
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                bar.get_height() * 1.05,   # offset in log-scale
+                label,
+                ha="center",
+                va="bottom",
+                fontsize=12,
+                fontweight="bold",
+                rotation=0
+            )
+
+    # ---- Axes & style ----
+    if log_scale:
+        ax.set_yscale("log")
+    for label in ax.get_xticklabels() + ax.get_yticklabels():
+        label.set_fontweight("bold")
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(gammas)
+    ax.set_ylim(bottom=1e-3, top=25.0)
+
+    ax.set_xlabel(str(r"Heterogeneity ($\gamma$)"),fontweight="bold", fontsize=25)
+
+    ax.set_ylabel(str(r"$\rho(z^{NE})$"),fontweight="bold",fontsize=25)
+    #ax.set_title("Relative efficiency loss vs heterogeneity γ")
+
+    ax.legend(frameon=False, prop={'weight': 'bold'})
+    ax.grid(True, which="both", axis="y", alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(filename)
+    plt.close()
+
+    return filename
+
+
+if st.button("📈 Run Linear VS Log)"):
+
+    with st.spinner("Running Linear VS Log)..."):
+        compare_results = run_main_gamma_curvature(cfg, GameKelly, lrMethod_fixed="DAQ_F", n_fixed=cfg["n"])
+    st.success("Done.")
+
+    st.session_state.compare_results = compare_results
+    st.session_state.config = cfg
+   # st.session_state.gamma_grid = gamma_grid
+
+if 'compare_results' in st.session_state:
+    # --- Retrieve data from session ---
+    compare_results = st.session_state.compare_results
+    config = st.session_state.config
+    df, fig_compare = plot_main_bar_gamma_curvature(compare_results, lrMethod_fixed="DAQ_F")
+    #print(df)
+
+    st.subheader("📂 Download Outputs")
+
+
+    pdf_path = save_bar_gamma_curvature_pdf(df,log_scale=cfg["ylog_scale"])
+
+    with open(pdf_path, "rb") as f:
+        st.download_button(
+            "⬇️ Download plot (PDF)",
+            f,
+            file_name=pdf_path,
+            mime="application/pdf"
+        )
+
