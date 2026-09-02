@@ -43,7 +43,7 @@ The multi-resource workflow displays aggregate and per-resource fairness, residu
 | OGD_V | Projected current-gradient update | Varying, proportional to `1/√t` |
 | DAQ_F | Quadratic dual averaging of cumulative gradients | Fixed horizon |
 | DAQ_V | Quadratic dual averaging of cumulative gradients | Varying |
-| RRM_V | Reinforcement-style accumulation of scaled gradients | Varying |
+| RRM_V | Regularized-Robbins Monro | Varying |
 | DAE / XL | Score-based learning variants | Configured in the simulator |
 | Hybrid | Different player groups use different rules | Group-specific |
 
