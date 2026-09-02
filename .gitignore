@@ -1,3 +1,19 @@
 .venv/
 __pycache__/
 *.pyc
+
+# Generated simulation and publication outputs.
+Journal2025/figures/
+figures/*
+!figures/.gitkeep
+results/
+*_plot.pdf
+*_legend.pdf
+*_zoom.pdf
+*_plot.jpeg
+/*.pdf
+/*.png
+/*.jpg
+/*.jpeg
+*.mp4
+*.gif

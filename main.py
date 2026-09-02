@@ -1,10 +1,6 @@
-#main.py
-
-import os
 import numpy as np
-
-import torch, random, time
 import streamlit as st
+import torch
 
 from src.game.utils import *
 from src.game.config import SIMULATION_CONFIG as cfg
@@ -42,12 +38,13 @@ class SimulationRunner:
         var_init = self.config["var_init"]
         #if "Hybrid" in lrMethods:
         bid0 = eps*torch.rand(1) #torch.abs( (2*var_init) * torch.rand(n) + z_sol_equ - var_init)
-        c_min = epsilon
+        c_min = 2*epsilon
 
         a_vector = torch.tensor(self.config["a_vector"], dtype=torch.float64)#torch.tensor([max(a - i * gamma, a_min) for i in range(n)], dtype=torch.float64)
         c_vector = torch.tensor([max(c -i * mu, c_min) for i in range(n)], dtype=torch.float64)
         dmin = a_vector * torch.log((epsilon + torch.sum(c_vector) - c_vector + delta) / epsilon)
         d_vector = 0.7 * dmin*0
+        #print(f"c_vector: {c_vector}")
 
         # Compute optimum
         x_log_optimum = x_log_opt(c_vector, a_vector, d_vector, eps, delta, price, bid0,alpha)
@@ -73,7 +70,7 @@ class SimulationRunner:
         status_text = st.empty()
         game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
         Bids_Opt, Welfare_Opt, Utility_set_Opt, error_NE_set_Opt = game_set.learning(
-            "DAQ_F", a_vector, c_vector, d_vector, T, eta, bid0, stop=False
+            "BR", a_vector, c_vector, d_vector, T, eta, bid0, stop=False
         )
         z_ne =  Bids_Opt[0][-1]
         jain_index_ne = Bids_Opt[2][-1]
@@ -102,6 +99,8 @@ class SimulationRunner:
         }
 
         for i in range(self.config["Nb_random_sim"]):
+            bid0 = (c - epsilon) * torch.rand(n) + epsilon
+            bid0 = eps * bid0[0]
             if not self.config["keep_initial_bid"]:
                 if self.config["Random_Initial_Bid"]:
                     if "Hybrid" in lrMethods:
@@ -114,6 +113,8 @@ class SimulationRunner:
                     var_init = self.config["var_init"]
                     bid0 =  torch.abs((2 * var_init) * torch.rand(n) + z_sol_equ - var_init)
                     bid0 = eps * bid0[0]
+
+
             idx = 0
             idx_rmfq = 0
             NbHybrid = 0
@@ -123,18 +124,16 @@ class SimulationRunner:
             if "Hybrid" in lrMethods:
                 for percent in self.config["Nb_A1"][:self.config["num_hybrids"]]:
                     Global_Hybrids_set.append(make_subset(self.config["n"],percent))
-
-            #print(f"Global_Hybrids_set:{Global_Hybrids_set}")
+            bid0 = (c - epsilon) * torch.rand(n) + epsilon #120 10%, 95 80%
+            #bid0 = eps * bid0[0] #91.5
             for idxMthd, lrMethod in enumerate(lrMethods):
                 lrMethod2 = lrMethod
                 Hybrid_funcs, Hybrid_sets = [], []
 
                 if lrMethod == "Hybrid" :
                     NbHybrid = NbHybrid+1
-                    #print(self.config["Hybrid_funcs"])
                     Hybrid_sets = Global_Hybrids_set[(NbHybrid-1)%self.config["num_hybrids"]]#make_subset(self.config["n"],NbHybrid)# self.config["Hybrid_sets"][NbHybrid-1]
                     Hybrid_funcs = self.config["Hybrid_funcs"][NbHybrid-1]
-                    #print(NbHybrid)
                     if self.config["num_hybrid_set"]>=1 and self.config["num_hybrids"]>1:
 
                         lrMethod2 = f"({Hybrid_funcs[0]}: {self.config['Nb_A1'][NbHybrid-1]}, {Hybrid_funcs[1]}: {n - self.config['Nb_A1'][NbHybrid-1]})"
@@ -144,7 +143,7 @@ class SimulationRunner:
                         copy_keys[lrMethod2] = key
                     idx += 1
 
-                elif lrMethod != "SBRD": #self.config["num_lrmethod"]!=0:
+                elif lrMethod != "BR": #self.config["num_lrmethod"]!=0:
                     if lrMethod == "RRM_nt":
                         lrMethod2 = f"RRM_nt_{self.config["RRM_lr"][idx_rmfq]}"
                         idx_rmfq += 1
@@ -153,8 +152,6 @@ class SimulationRunner:
                     key = lrMethod
                     if key not in copy_keys:
                         copy_keys[lrMethod] = (key)
-
-                   # idx += 1
 
 
                 game_set = GameKelly(n, price, eps, delta, alpha, tol, payoff_min=Payoff_min, payoff_max=Payoff_max)
@@ -181,13 +178,13 @@ class SimulationRunner:
                     'Avg_Bid': Bids[1].detach().numpy(),
                     "Jain_Index": Bids[2].detach().numpy(),
                     "Pareto": Pareto_check.detach().numpy(),
-                    'SBRD_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
+                    'BR_Opt_Bid': Bids_Opt[0][-1].detach().numpy(),
 
-                    'SBRD_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
-                    'Payoff': Payoff_Norm.detach().numpy(), #Utility_set[0].detach().numpy(),#
+                    'BR_Opt_Avg_Bid': Bids_Opt[1].detach().numpy(),
+                    "Inst.Payoff": Payoff_Norm.detach().numpy(), #Utility_set[0].detach().numpy(),#
                     'epsilon_error': Utility_set[4].detach().numpy(),
                     'epsilon_error_Hybrid': Utility_set[5].detach().numpy(),
-                    'SBRD_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
+                    'BR_Opt_Utility': Utility_set_Opt[0][-1].detach().numpy(),
                     'Avg_Payoff': AvgPayoff_norm.detach().numpy(), # Utility_set[1].detach().numpy(),
                     'Res_Payoff': Utility_set[2].detach().numpy(),
                     'Potential': Utility_set[3].detach().numpy(),
@@ -196,7 +193,6 @@ class SimulationRunner:
                 }
 
                 # --- Accumulate for averaging ---
-                print(( Bids[0].detach().numpy())[-1], x_log_optimum)
                 if lrMethod2 not in self.results["methods"]:
                     # Initialize lists to store multiple runs
                     self.results["methods"][lrMethod2] = {k: [v] for k, v in sim_result.items()}
@@ -292,4 +288,3 @@ if  __name__ == "__main__":
         figpath_plot, figpath_legend = plotGame(x_data, y_data, cfg["x_label"], cfg["y_label"], LEGENDS,
                                                 saveFileName=save_to,fontsize=40, markersize=20, linewidth=12,linestyle="-",
                                                 ylog_scale=cfg["ylog_scale"], pltText=cfg["pltText"], step=cfg["plot_step"])
-

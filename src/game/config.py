@@ -1,5 +1,5 @@
 SIMULATION_CONFIG = {
-    "lrMethods": ["DAQ","DAE","OGD","SBRD"],
+    "lrMethods": ["DAQ","DAE","OGD","BR"],
     "Hybrid_funcs": ["DAQ", "DAE"],
     "T": 3000,  # Number of iterations in the learning process
     "alpha": 1,  # Fairness parameter in utility (e.g., α-fair utility)
@@ -8,7 +8,7 @@ SIMULATION_CONFIG = {
     "price": 1.0,  # Price parameter in the game (can represent a resource price)
     "a": 100,  # Parameter for the utility function heterogeneity (a_i)
     "a_min": 1,
-    "mu": 0,  # Exponent controlling the heterogeneity of the c_vector
+    "mu": 0.0,  # Exponent controlling the heterogeneity of the c_vector
     "c": 400,  # Constant part of the c_vector
     "delta": 0.1,  # Delta parameter (could model uncertainty, slack, or safety margin)
     "epsilon": 1,  # Regularization term (to avoid division by zero, for stability)
@@ -19,13 +19,13 @@ SIMULATION_CONFIG = {
     "var_init": 10,
     "IdxConfig": 1,  # Configuration index to select the regularizer or the response method
     "x_label": "Time step (t)",  # Label for the x-axis in the output plot
-    "metric": "SW",  # "Speed" or "lpoa",or "LSW" , "Bid", "utility", "Dist-2-Opt-SW"
+    "metric": "Speed",  # "Speed" or "lpoa",or "LSW" , "Bid", "utility", "Dist-2-Opt-SW"
     "y_label": "SW",
     # "||BR(z) -z||"; Social Welfare, Distance To Optimal SW r"$\varphi (z)$" Label for the y-axis in the output plot (error between best response and current state)
-    "ylog_scale": False,
+    "ylog_scale": True,
     # Whether to use a logarithmic scale on the y-axis in the plot, recommended for speed's convergence plot
     "plot_step": 200,
-    "saveFileName": "Hybrid_OGD+SBRD_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+SBRD
+    "saveFileName": "Hybrid_OGD+BR_",  # Prefix for the filename where results/plots are saved Hybrid_DAQ+BR
     "pltText": True,  # Whether to display text annotations on the plot
     "gamma": 0.0  # Exponent controlling the heterogeneity of the a_vector
 }
@@ -38,8 +38,8 @@ SIMULATION_CONFIG_table = {
     "save_path": "results_table.csv",  # Path to save the result (.csv file)
 
     # Learning methods to compare in the simulation
-    "lrMethods":  ["DAH","DAQ", "SBRD"],  # List of learning methods: SBRD = Best Response, DAQ = Dual Averaging Quadratic, XL = Extra Learning
-    "Hybrid_funcs": ["DAQ", "DAH"],
+    "lrMethods":  ["DAE","DAQ", "BR"],  # List of learning methods: BR = Best Response, DAQ = Dual Averaging Quadratic, XL = Extra Learning
+    "Hybrid_funcs": ["DAQ", "DAE"],
 
     # Range of values for experiment parameters
     "list_n": [2, 3, 5, 10],       # List of numbers of players to simulate

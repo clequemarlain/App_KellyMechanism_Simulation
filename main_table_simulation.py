@@ -102,7 +102,7 @@ def run_simulation_table_avg(config, GameKelly):
                 if lrMethod == "RRM":
                     lrMethod2 = f"RRM_{config["RRM_lr"][idx_rmfq]}"
                     idx_rmfq += 1
-                elif lrMethod != "SBRD":  # self.config["num_lrmethod"]!=0:
+                elif lrMethod != "BR":  # self.config["num_lrmethod"]!=0:
                     key = lrMethod
                     if key not in copy_keys:
                         copy_keys[lrMethod] = (key)
@@ -163,7 +163,9 @@ import io
 import csv
 from collections import defaultdict
 
-def display_results_streamlit_dict(results, config, save_path=None):
+def display_results_streamlit_dict(
+    results, config, save_path=None, convergence_measure="bid"
+):
     """
     Display a dictionary-style result (results[gamma][n][method] = avg_iterations) in Streamlit as a table.
     """
@@ -171,8 +173,34 @@ def display_results_streamlit_dict(results, config, save_path=None):
     list_n = config["list_n"]
     lrMethods = config["LEGENDS"]
 
-    # Build headers
-    headers = ["gamma", "n"] + lrMethods
+    measure_specs = {
+        "bid": {
+            "title": "Bid convergence time (averaged)",
+            "caption": (
+                "Convergence is measured by the bid-space Nash residual "
+                "‖BR(zᵗ) − zᵗ‖₂."
+            ),
+            "filename": "bid_convergence_time_avg.csv",
+        },
+        "payoff": {
+            "title": "Payoff convergence time (averaged)",
+            "caption": (
+                "Convergence is measured by the ε-Nash payoff gain: the "
+                "improvement available from a unilateral best response."
+            ),
+            "filename": "payoff_convergence_time_avg.csv",
+        },
+    }
+    if convergence_measure not in measure_specs:
+        raise ValueError("convergence_measure must be 'bid' or 'payoff'.")
+    spec = measure_specs[convergence_measure]
+
+    headers = ["γ", "Players (n)"]
+    for method in lrMethods:
+        headers.extend([
+            f"{method} — iterations",
+            f"{method} — minimum residual",
+        ])
 
     # Build table rows
     table_rows = []
@@ -181,22 +209,30 @@ def display_results_streamlit_dict(results, config, save_path=None):
         for n in sorted(list_n):
             row = [gamma, n]
             for method in lrMethods:
-                # Handle hybrid method labels if present
-                #method_keys = [k for k in results[gamma][n].keys() if method in k] if method == "Hybrid" else [method]
-                metric = results[gamma][n][method]
-                if isinstance(metric, float) and np.isinf(metric):
-                    metric_str = results[gamma][n][method+ "error"]#f"<{config["T"]}"#"∞"
+                iterations = results[gamma][n][method]
+                minimum_residual = results[gamma][n][method + "error"]
+                if torch.is_tensor(minimum_residual):
+                    minimum_residual = float(minimum_residual.detach().cpu())
                 else:
-                    metric_str = metric
-                row.append(metric_str)
+                    minimum_residual = float(minimum_residual)
+                row.extend([iterations, minimum_residual])
             table_rows.append(row)
 
     # Convert to DataFrame
     df = pd.DataFrame(table_rows, columns=headers)
 
     # Streamlit display
-    st.write("### 📊 Comparison of Convergence Time (averaged)")
-    st.dataframe(df, use_container_width=True)
+    st.subheader(spec["title"])
+    st.caption(spec["caption"])
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            column: st.column_config.NumberColumn(format="%.3e")
+            for column in df.columns if column.endswith("minimum residual")
+        },
+    )
 
     # Prepare CSV for download
     csv_buffer = io.StringIO()
@@ -207,6 +243,6 @@ def display_results_streamlit_dict(results, config, save_path=None):
     st.download_button(
         label="⬇️ Download Table as CSV",
         data=csv_data,
-        file_name="table_results_avg.csv",
+        file_name=spec["filename"],
         mime="text/csv"
     )

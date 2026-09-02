@@ -4,4 +4,5 @@ scipy
 matplotlib
 plotly
 streamlit
-pdf2image
+pandas
+Pillow
